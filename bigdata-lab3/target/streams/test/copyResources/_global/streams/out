@@ -1,0 +1,4 @@
+[debug] Copy resource mappings: 
+[debug] 	(D:\DEV\Workspace\study\bigdata-lab3\src\test\resources\fixtures\EXPECTED.md,D:\DEV\Workspace\study\bigdata-lab3\target\scala-2.11\test-classes\fixtures\EXPECTED.md)
+[debug] 	(D:\DEV\Workspace\study\bigdata-lab3\src\test\resources\fixtures\invalid-sales.csv,D:\DEV\Workspace\study\bigdata-lab3\target\scala-2.11\test-classes\fixtures\invalid-sales.csv)
+[debug] 	(D:\DEV\Workspace\study\bigdata-lab3\src\test\resources\fixtures\shared-sales.csv,D:\DEV\Workspace\study\bigdata-lab3\target\scala-2.11\test-classes\fixtures\shared-sales.csv)

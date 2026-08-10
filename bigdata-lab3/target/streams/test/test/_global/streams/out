@@ -1,0 +1,146 @@
+[debug] javaOptions: Vector(-Duser.timezone=UTC, -Dfile.encoding=UTF-8)
+[debug] Forking tests - parallelism = false
+[debug] Create a single-thread test executor
+[debug] Runner for org.scalatest.tools.Framework produced 14 initial tasks for 14 tests.
+[debug]   Running TaskDef(lab3.task11.Task11LogicSpec, sbt.ForkMain$SubclassFingerscan@4678c730, false, [SuiteSelector])
+[info] Task11LogicSpec:
+[info] WindowLength.days
+[info] - should use 10 days at 10000 and 5 days strictly above it
+[info] WindowBuckets.dates
+[info] - should emit t+1 through t+w including unseen future dates
+[info] Moment
+[info] - should combine associatively and compute population variance
+[info] - should count rows with missing amount while leaving variance undefined
+[info] Winner
+[info] - should apply frequency, lower variance, and lexical tie-breaks in order
+[info] - should rank an undefined variance after a finite variance when frequency ties
+[info] WindowConfig
+[info] - should round-trip states containing punctuation and Unicode
+[info] Task11Keys
+[info] - should round-trip bucket and candidate contracts
+[info] CsvEncoding
+[info] - should quote commas, quotes, and line breaks
+[debug]     Produced 0 nested tasks and 9 events.
+[debug]   Running TaskDef(lab3.task22.Task22Spec, sbt.ForkMain$SubclassFingerscan@6767c1fc, false, [SuiteSelector])
+[info] Task22Spec:
+[info] Task22Pipeline exact path
+[info] - should match nearest-rank boundaries for N=1,2,5,10 and duplicate counts
+[info] - should report threshold and bidirectional qualifying-set differences
+[debug]     Produced 0 nested tasks and 2 events.
+[debug]   Running TaskDef(lab3.task12.MedianSpec, sbt.ForkMain$SubclassFingerscan@29ee9faa, false, [SuiteSelector])
+[info] MedianSpec:
+[info] Median.exact
+[info] - should calculate odd and even exact medians without mutating input
+[info] - should return a typed failure for an empty group
+[info] - should avoid Long overflow for an even pair
+[debug]     Produced 0 nested tasks and 3 events.
+[debug]   Running TaskDef(lab3.task11.Task11LocalIntegrationSpec, sbt.ForkMain$SubclassFingerscan@c038203, false, [SuiteSelector])
+[info] Task11LocalIntegrationSpec:
+[info] Task11Driver
+[info] - should run all three Hadoop jobs and export one deterministic CSV !!! CANCELED !!!
+[info]   Hadoop 3.3.6 local mode requires its native Windows layer; this integration test runs on Linux/Lab 1 (Task11LocalIntegrationSpec.scala:15)
+[debug]     Produced 0 nested tasks and 1 events.
+[debug]   Running TaskDef(lab3.common.SaleRowParserSpec, sbt.ForkMain$SubclassFingerscan@cc285f4, false, [SuiteSelector])
+[info] SaleRowParserSpec:
+[info] SaleRowParser
+[info] - should validate the exact supplied header
+[info] - should parse quoted commas, strict dates, nulls, and distinct promotions
+[info] - should return deterministic typed errors
+[info] - should reject non-finite amounts
+[debug]     Produced 0 nested tasks and 4 events.
+[debug]   Running TaskDef(lab3.spark.StructuredApiPolicySpec, sbt.ForkMain$SubclassFingerscan@55f3ddb1, false, [SuiteSelector])
+[info] StructuredApiPolicySpec:
+[info] Task 2 source
+[info] - should not execute direct Spark SQL query strings
+[info] - should use functions.expr only at the reviewed percentile_approx location
+[debug]     Produced 0 nested tasks and 2 events.
+[debug]   Running TaskDef(lab3.task12.Task12LogicSpec, sbt.ForkMain$SubclassFingerscan@8bd1b6a, false, [SuiteSelector])
+[info] Task12LogicSpec:
+[info] StyleVariety.qualifyingVariety
+[info] - should count distinct SKU only for a style containing XXL or larger
+[info] Normalization.isAtLeastXXL
+[info] - should cover required qualifying and non-qualifying aliases
+[info] Task12Keys
+[info] - should round-trip style, state-month, and SKU-size values
+[info] Sale month
+[info] - should remain separate across a calendar-month boundary
+[debug]     Produced 0 nested tasks and 4 events.
+[debug]   Running TaskDef(lab3.task12.Task12LocalIntegrationSpec, sbt.ForkMain$SubclassFingerscan@18be83e4, false, [SuiteSelector])
+[info] Task12LocalIntegrationSpec:
+[info] Task12Driver
+[info] - should run both Hadoop jobs and export exact median-variety rows !!! CANCELED !!!
+[info]   Hadoop 3.3.6 local mode requires its native Windows layer; this integration test runs on Linux/Lab 1 (Task12LocalIntegrationSpec.scala:15)
+[debug]     Produced 0 nested tasks and 1 events.
+[debug]   Running TaskDef(lab3.spark.SparkFoundationSpec, sbt.ForkMain$SubclassFingerscan@cb5822, false, [SuiteSelector])
+[info] SparkFoundationSpec:
+[info] Spark foundation
+[info] - should read, normalize, tokenize, profile, and capture execution evidence on local[2]
+[debug]     Produced 0 nested tasks and 1 events.
+[debug]   Running TaskDef(lab3.task21.Task21Spec, sbt.ForkMain$SubclassFingerscan@4b9e13df, false, [SuiteSelector])
+[info] Task21Spec:
+[info] Task21Job
+[info] - should match the hand-calculated state-city numerator, denominator, and percentage
+[info] - should collect extended plan, join, Exchange, and stage evidence
+[info] - should write one exact readable Parquet file on a supported Hadoop local filesystem !!! CANCELED !!!
+[info]   Spark/Hadoop 3.3.6 Parquet output requires the native Windows layer; this test runs on Linux/Lab 1 (Task21Spec.scala:60)
+[debug]     Produced 0 nested tasks and 3 events.
+[debug]   Running TaskDef(lab3.common.NormalizationSpec, sbt.ForkMain$SubclassFingerscan@2b98378d, false, [SuiteSelector])
+[info] NormalizationSpec:
+[info] Normalization.normalizeDimension
+[info] - should trim, collapse whitespace, and uppercase
+[info] Normalization.isBought
+[info] - should require shipped in status and non-zero quantity
+[info] Normalization.isAtLeastXXL
+[info] - should recognize textual and numeric XXL aliases
+[info] Normalization.parsePromotions
+[info] - should preserve first-seen order and remove blanks and duplicates
+[debug]     Produced 0 nested tasks and 4 events.
+[debug]   Running TaskDef(lab3.common.CliSpec, sbt.ForkMain$SubclassFingerscan@475530b9, false, [SuiteSelector])
+[info] CliSpec:
+[info] Cli.parse
+[info] - should parse values and flags
+[info] - should reject positional and duplicate arguments
+[info] Cli.requireValues
+[info] - should report every missing required option
+[info] Cli.positiveInt
+[info] - should accept a positive value or use the default
+[info] - should reject zero, negative, and non-numeric values
+[info] Cli.uri
+[info] - should allow only configured URI schemes
+[info] Cli.validateOutputState
+[info] - should require explicit overwrite for an existing target
+[debug]     Produced 0 nested tasks and 7 events.
+[debug]   Running TaskDef(lab3.io.OutputValidatorSpec, sbt.ForkMain$SubclassFingerscan@1d057a39, false, [SuiteSelector])
+[info] OutputValidatorSpec:
+[info] OutputValidator
+[info] - should accept valid Task 1 CSV contracts
+[info] - should reject duplicate logical keys and invalid values
+[debug]     Produced 0 nested tasks and 2 events.
+[debug]   Running TaskDef(lab3.task22.BenchmarkHarnessSpec, sbt.ForkMain$SubclassFingerscan@26be92ad, false, [SuiteSelector])
+[info] BenchmarkHarnessSpec:
+[info] BenchmarkHarness.summarize
+[info] - should calculate arithmetic mean and sample standard deviation
+[info] BenchmarkHarness.compare
+[info] - should reject fewer than five measured runs
+[info] - should record five samples for each method
+[debug]     Produced 0 nested tasks and 3 events.
+[info] Run completed in 36 seconds, 280 milliseconds.
+[info] Total number of tests run: 43
+[info] Suites: completed 14, aborted 0
+[info] Tests: succeeded 43, failed 0, canceled 3, ignored 0, pending 0
+[info] All tests passed.
+[debug] Passed tests:
+[debug] 	lab3.task11.Task11LogicSpec
+[debug] 	lab3.task22.Task22Spec
+[debug] 	lab3.task12.MedianSpec
+[debug] 	lab3.task11.Task11LocalIntegrationSpec
+[debug] 	lab3.common.SaleRowParserSpec
+[debug] 	lab3.spark.StructuredApiPolicySpec
+[debug] 	lab3.task12.Task12LogicSpec
+[debug] 	lab3.task12.Task12LocalIntegrationSpec
+[debug] 	lab3.spark.SparkFoundationSpec
+[debug] 	lab3.task21.Task21Spec
+[debug] 	lab3.common.NormalizationSpec
+[debug] 	lab3.common.CliSpec
+[debug] 	lab3.io.OutputValidatorSpec
+[debug] 	lab3.task22.BenchmarkHarnessSpec
