@@ -1,23 +1,89 @@
-# Big Data Lab 3 — MapReduce và Spark
+# Big Data Lab 3 - MapReduce và Spark
 
-Tài liệu này hướng dẫn chạy bài hoàn toàn trên máy Lab 1/pseudo-distributed, không dùng Google Colab. Các lệnh bên dưới chạy trong terminal Linux tại thư mục `bigdata-lab3`.
+Tài liệu này là runbook trực tiếp cho WSL. Không cần thư mục `scripts/`; mọi lệnh được chạy thẳng trong terminal.
 
-## 1. Kiểm tra môi trường
+Trước khi bắt đầu, hãy bảo đảm máy có:
+- WSL2 hoặc một môi trường Ubuntu có `sudo`.
+- Java 8, Scala 2.11.12, Hadoop 3.3.6, Spark 2.4.8 và sbt 1.10.6.
+- Các tiện ích `zip`, `unzip`, `curl`, `wget`, `tar`, `git`.
+
+## 0. Quy ước đường dẫn
+
+- `USER_NAME` là tên user WSL của bạn, ví dụ `<user_name>`.
+- `WORKSPACE_ROOT` là thư mục chứa workspace.
+- `LAB3_ROOT` là thư mục project `23127442`.
+- `INPUT_CSV` là file `Amazon Sale Report.csv` đi kèm workspace.
+- `src/Task_*` là source root trực tiếp cho từng task; mỗi task chỉ còn các file `.scala` nằm trực tiếp bên dưới thư mục đó, còn `src/common/source` vẫn giữ cho mã dùng chung.
+- `python/` chứa các script Python đối chiếu, sinh 4 file CSV kết quả.
+
+Ví dụ:
 
 ```bash
+export USER_NAME="<user_name>"
+export HOME_DIR="/home/${USER_NAME}"
+export WORKSPACE_ROOT="${HOME_DIR}/BigData_Lab3"
+export LAB3_ROOT="${WORKSPACE_ROOT}/23127442"
+export INPUT_CSV="${WORKSPACE_ROOT}/Amazon Sale Report.csv"
+```
+
+Nếu bạn clone workspace ở thư mục khác, chỉ cần sửa `WORKSPACE_ROOT` cho đúng.
+
+## 1. Cài đặt phụ thuộc trên WSL
+
+### 1.1 Cài gói cơ bản
+
+```bash
+sudo apt update
+sudo apt install -y openjdk-8-jdk curl wget tar unzip git zip
+```
+
+### 1.2 Cài Scala và sbt
+
+```bash
+curl -s "https://get.sdkman.io" | bash
+source "$HOME/.sdkman/bin/sdkman-init.sh"
+sdk install scala 2.11.12
+sdk install sbt 1.10.6
+```
+
+### 1.3 Giải nén Hadoop và Spark
+
+Nếu bạn đã có sẵn bộ cài của Lab 1, chỉ cần trỏ lại các biến ở bước 2. Nếu chưa có, hãy giải nén các gói đúng version sau:
+
+```bash
+mkdir -p "$HOME/tools"
+tar -xzf "$HOME/Downloads/hadoop-3.3.6.tar.gz" -C "$HOME/tools"
+tar -xzf "$HOME/Downloads/spark-2.4.8-bin-hadoop2.7.tgz" -C "$HOME/tools"
+```
+
+## 2. Cấu hình môi trường
+
+```bash
+export JAVA_HOME="/usr/lib/jvm/java-8-openjdk-amd64"
+export HADOOP_HOME="$HOME/tools/hadoop-3.3.6"
+export SPARK_HOME="$HOME/tools/spark-2.4.8-bin-hadoop2.7"
+export PATH="$JAVA_HOME/bin:$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$SPARK_HOME/bin:$HOME/.sdkman/candidates/scala/current/bin:$HOME/.sdkman/candidates/sbt/current/bin:$PATH"
+
+# Nếu muốn giữ cấu hình lâu dài, hãy thêm các dòng export trên vào ~/.bashrc
+```
+
+## 3. Kiểm tra phiên bản
+
+```bash
+cd "$LAB3_ROOT"
 java -version
 scala -version
 hadoop version
 spark-submit --version
 sbt --version
-bash scripts/preflight.sh
 ```
 
-Mục đích: xác nhận đúng Java 8, Scala 2.11.12, Hadoop 3.3.6 và Spark 2.4.8 build cho Scala 2.11. Script sẽ dừng và báo rõ thành phần bị thiếu/sai phiên bản. Không chạy JAR Scala 2.11 bằng Spark build cho Scala 2.12.
+Mục tiêu: xác nhận Java 8, Scala 2.11.12, Hadoop 3.3.6, Spark 2.4.8 build cho Scala 2.11 và sbt đã sẵn sàng.
 
-## 2. Khởi động Hadoop pseudo-distributed
+## 4. Khởi động Hadoop pseudo-distributed
 
 ```bash
+cd "$LAB3_ROOT"
 start-dfs.sh
 start-yarn.sh
 jps
@@ -25,138 +91,187 @@ hdfs dfsadmin -report
 yarn node -list
 ```
 
-Mục đích: khởi động HDFS/YARN và kiểm tra NameNode, DataNode, ResourceManager, NodeManager đang hoạt động. Nếu các dịch vụ đã chạy thì không cần khởi động lần nữa.
+Mục tiêu: NameNode, DataNode, ResourceManager và NodeManager đều đang chạy trước khi nạp input.
 
-## 3. Build và chạy test
+## 5. Build project
 
 ```bash
+cd "$LAB3_ROOT"
 sbt clean test assembly
 jar tf target/scala-2.11/bigdata-lab3.jar | grep -E '^org/apache/(spark|hadoop)/' || true
 ```
 
-Kết quả mong đợi: test thành công, tạo `target/scala-2.11/bigdata-lab3.jar`; lệnh `grep` không in class Spark/Hadoop vì hai runtime này do môi trường cung cấp.
+Mục tiêu: tạo `target/scala-2.11/bigdata-lab3.jar` và bảo đảm Hadoop/Spark không bị đóng gói vào JAR.
 
-## 4. Chuẩn bị input và thư mục kết quả
+## 6. Chuẩn bị input
 
 ```bash
-mkdir -p outputs docs/evidence
-hdfs dfs -mkdir -p /user/$USER/lab3/input
-hdfs dfs -put "../Amazon Sale Report.csv" /user/$USER/lab3/input/amazon-sales.csv
+cd "$LAB3_ROOT"
+export OUTPUT_DIR="$LAB3_ROOT/outputs"
+export EVIDENCE_DIR="$LAB3_ROOT/docs/evidence"
+export HDFS_ROOT="/user/${USER_NAME}/lab3"
+
+mkdir -p "$OUTPUT_DIR" "$EVIDENCE_DIR"
+hdfs dfs -mkdir -p "$HDFS_ROOT/input"
+hdfs dfs -put -f "$INPUT_CSV" "$HDFS_ROOT/input/amazon-sales.csv"
+hdfs dfs -ls "$HDFS_ROOT/input"
+hdfs dfs -du -h "$HDFS_ROOT/input/amazon-sales.csv"
 ```
 
-Mục đích: MapReduce đọc CSV từ HDFS. Dấu ngoặc kép là bắt buộc vì tên file có khoảng trắng. Nếu HDFS input đã tồn tại, kiểm tra trước rồi chỉ dùng `-put -f` khi thật sự muốn ghi đè.
+Mục tiêu: đưa CSV vào HDFS để Task 1-1 và Task 1-2 có thể đọc lại nhiều lần.
+
+## 7. Chạy Task 1-1
 
 ```bash
-hdfs dfs -ls /user/$USER/lab3/input
-hdfs dfs -du -h /user/$USER/lab3/input/amazon-sales.csv
-```
-
-Kết quả mong đợi: thấy một input khoảng 68,9 MB.
-
-## 5. Chạy Task 1-1 — cửa sổ trượt động
-
-```bash
+cd "$LAB3_ROOT"
 hadoop jar target/scala-2.11/bigdata-lab3.jar lab3.task11.Task11Main \
-  --input /user/$USER/lab3/input/amazon-sales.csv \
-  --work /user/$USER/lab3/work/task11 \
-  --output-local "$PWD/outputs/Task_1-1.csv" \
+  --input "$HDFS_ROOT/input/amazon-sales.csv" \
+  --work "$HDFS_ROOT/work/task11" \
+  --output-local "$OUTPUT_DIR/Task_1-1.csv" \
   --reducers 2
 ```
 
-Mục đích: chạy ba job MR: đếm bought row theo bang, map mỗi row vào các bucket tương lai, rồi chọn size thắng. Bang có tổng bought `> 10000` dùng 5 ngày; còn lại dùng 10 ngày. Bought nghĩa là Status chứa `SHIPPED` và `Qty != 0`.
+Nếu muốn chạy lại và ghi đè kết quả cũ, thêm `--overwrite` vào cuối lệnh.
+
+Kiểm tra nhanh:
 
 ```bash
-head outputs/Task_1-1.csv
+head "$OUTPUT_DIR/Task_1-1.csv"
 ```
 
-Header phải là `state,window_date,window_days,winning_size,frequency,population_variance`.
-
-## 6. Chạy Task 1-2 — median variety
+## 8. Chạy Task 1-2
 
 ```bash
+cd "$LAB3_ROOT"
 hadoop jar target/scala-2.11/bigdata-lab3.jar lab3.task12.Task12Main \
-  --input /user/$USER/lab3/input/amazon-sales.csv \
-  --work /user/$USER/lab3/work/task12 \
-  --output-local "$PWD/outputs/Task_1-2.csv" \
+  --input "$HDFS_ROOT/input/amazon-sales.csv" \
+  --work "$HDFS_ROOT/work/task12" \
+  --output-local "$OUTPUT_DIR/Task_1-2.csv" \
   --reducers 2
 ```
 
-Mục đích: chỉ lấy bought rows, đếm distinct SKU theo style/bang/tháng đối với style có ít nhất một size từ XXL trở lên, rồi tính exact median.
+Nếu muốn chạy lại và ghi đè kết quả cũ, thêm `--overwrite` vào cuối lệnh.
+
+Kiểm tra nhanh:
 
 ```bash
-head outputs/Task_1-2.csv
+head "$OUTPUT_DIR/Task_1-2.csv"
 ```
 
-Header phải là `state,month,median_variety,qualifying_style_count`.
-
-## 7. Chạy Task 2-1 — tỷ lệ Cancelled Standard
+## 9. Chạy Task 2-1
 
 ```bash
-INPUT_URI=$(readlink -f "../Amazon Sale Report.csv")
+cd "$LAB3_ROOT"
+export INPUT_URI="$(readlink -f "$INPUT_CSV")"
+
 spark-submit --master local[2] \
   --class lab3.task21.Task21Main \
   target/scala-2.11/bigdata-lab3.jar \
   --input "$INPUT_URI" \
-  --output-local "$PWD/outputs/Task_2-1.parquet" \
-  --evidence-dir "$PWD/docs/evidence/task21"
+  --output-local "$OUTPUT_DIR/Task_2-1.parquet" \
+  --evidence-dir "$EVIDENCE_DIR/task21"
 ```
 
-Mục đích: dùng DataFrame API để tính tử số/mẫu số theo `(state,city)`, ghi một file Parquet vật lý và lưu extended plan, join strategy, số Exchange, stage IDs. Mẫu số là toàn bộ Cancelled + Standard rows; tử số thêm promo hợp lệ `>=3`, Amount dưới trung bình bang của Merchant + Courier Shipped.
+Nếu muốn chạy lại và ghi đè kết quả cũ, thêm `--overwrite` vào cuối lệnh.
 
-## 8. Chạy Task 2-2 — approximate và exact percentile
+Mục tiêu: tạo một file Parquet và thu thập `extended-plan.txt`, `execution-summary.txt`.
+
+## 10. Chạy Task 2-2
 
 ```bash
+cd "$LAB3_ROOT"
+
 spark-submit --master local[2] \
   --class lab3.task22.Task22Main \
   target/scala-2.11/bigdata-lab3.jar \
   --input "$INPUT_URI" \
-  --output-local "$PWD/outputs/Task_2-2.parquet" \
-  --evidence-dir "$PWD/docs/evidence/task22" \
+  --output-local "$OUTPUT_DIR/Task_2-2.parquet" \
+  --evidence-dir "$EVIDENCE_DIR/task22" \
   --accuracy 10000 \
   --runs 5
 ```
 
-Mục đích: chạy built-in `percentile_approx` và exact nearest-rank P80/P90, so sánh threshold/tập qualifying, benchmark tối thiểu 5 lần mỗi phương pháp và ghi một file Parquet.
+Nếu muốn chạy lại và ghi đè kết quả cũ, thêm `--overwrite` vào cuối lệnh.
 
-## 9. Kiểm tra độc lập bốn output
+Mục tiêu: chạy percentile approx/exact, benchmark và thu thập evidence cho Task 2-2.
+
+## 11. Kiểm tra đầu ra
 
 ```bash
-bash scripts/validate-outputs.sh \
+cd "$LAB3_ROOT"
+spark-submit --master local[2] \
+  --class lab3.io.ValidationMain \
   target/scala-2.11/bigdata-lab3.jar \
-  "$PWD/outputs"
+  --output-dir "$OUTPUT_DIR"
 ```
 
-Kết quả mong đợi: `[OK] Bốn output đã qua schema, key và invariant validation`.
+Lệnh này đọc lại 4 kết quả cuối cùng:
 
-## 10. Chạy toàn bộ bằng một lệnh
+- `Task_1-1.csv`
+- `Task_1-2.csv`
+- `Task_2-1.parquet`
+- `Task_2-2.parquet`
+
+Nếu cần, bạn có thể kiểm tra thêm thư mục evidence:
 
 ```bash
-bash scripts/run-all.sh \
-  --jar "$PWD/target/scala-2.11/bigdata-lab3.jar" \
-  --input-local "$(readlink -f '../Amazon Sale Report.csv')" \
-  --hdfs-input /user/$USER/lab3/input/amazon-sales.csv \
-  --hdfs-work /user/$USER/lab3/work \
-  --output-dir "$PWD/outputs" \
-  --evidence-dir "$PWD/docs/evidence"
+find "$EVIDENCE_DIR" -maxdepth 2 -type f | sort
 ```
 
-Script dừng ngay khi một bước lỗi, không xóa đường dẫn HDFS rộng và tự chạy validator cuối. Chỉ thêm `--overwrite` khi muốn thay work/output cũ.
+## 12. Đóng gói nộp bài
 
-## 11. Chạy lại và xử lý lỗi thường gặp
+```bash
+printf '%s\n' "<drive_folder_url>" > "$LAB3_ROOT/docs/drive_link.txt"
 
-- `Output đã tồn tại`: đổi tên output hoặc chạy lại với `--overwrite` sau khi đã sao lưu kết quả cần giữ.
-- `Work path đã tồn tại`: kiểm tra bằng `hdfs dfs -ls`, sau đó dùng `--overwrite`; không xóa `/`, `/user` hay toàn bộ home HDFS.
-- `No FileSystem for scheme`: kiểm tra `core-site.xml`, `HADOOP_CONF_DIR` và dùng path HDFS hợp lệ.
-- `UnsupportedClassVersionError`: phải dùng Java 8 cho baseline này.
-- `NoSuchMethodError`/Scala signature error khi Spark chạy: `spark-submit --version` không khớp Spark 2.4.x/Scala 2.11; không ép chạy bằng Spark 3/Scala 2.12.
-- `Incompatible Jackson version`: dùng classpath của bản phân phối Spark tương thích; không thêm Hadoop/Jackson JAR vào `--jars` tùy tiện.
-- Thiếu `winutils.exe`: đây là lỗi Windows Hadoop; chạy bài trên môi trường Linux Lab 1/pseudo-distributed như đề yêu cầu.
+cd "$WORKSPACE_ROOT"
+zip -r "23127442.zip" "23127442" \
+  -x "23127442/.git/*" \
+     "23127442/target/*" \
+     "23127442/src/Task_1-1/.*" \
+     "23127442/src/Task_1-2/.*" \
+     "23127442/src/Task_2-1/.*" \
+     "23127442/src/Task_2-2/.*"
+```
 
-## 12. Các lưu ý bắt buộc về semantics
+Các thư mục ẩn `.lab3` và `.source` dưới task root là leftovers kỹ thuật; lệnh trên loại chúng khỏi ZIP để tree nộp bài chỉ còn các file `.scala` cần thiết.
+Nếu giảng viên muốn kèm theo evidence, bạn có thể bỏ phần loại trừ `docs/evidence/*` nếu có thêm vào sau.
+Nếu muốn đóng gói gọn hơn, bạn có thể xóa luôn `docs/evidence/` sau khi đã nộp evidence riêng.
 
-- Grain là một CSV row, dùng cột `index` làm `record_id`; không deduplicate theo Order ID.
-- Promotion token được tách đúng CSV, trim, bỏ rỗng và distinct trong từng row; promotion có chữ Amazon vẫn được tính.
-- Task 1-1 map ngày mua `t` vào `t+1..t+w`, nên output có thể có ngày sau ngày lớn nhất của input.
-- Task 1-2 dùng bought rows; median chẵn là trung bình hai giá trị giữa.
-- Task 2-2 exact percentile là observed value tại rank `ceil(p*N)`; Amount null không vào stddev nhưng row vẫn thuộc percentile population.
-- `shapes.parquet(legacy)` không liên quan đề và không được đưa vào bài nộp.
+## 13. Ghi chú quan trọng
+
+- Không cần và không nên có thư mục `scripts/` trong bản nộp cuối cùng.
+- `src/Task_*` là root trực tiếp cho code của từng task và chỉ nên chứa các file `.scala` nằm trực tiếp.
+- Các thư mục ẩn `.lab3` và `.source` dưới task root chỉ là leftovers kỹ thuật của quá trình chuyển layout, không nên đóng gói.
+- `src/common/source` vẫn được giữ lại cho code dùng chung.
+- Nếu `spark-submit --version` khác Spark 2.4.8 / Scala 2.11, hãy cập nhật Design trước khi tiếp tục.
+
+## 14. Xử lý lỗi môi trường
+
+- Nếu shell báo không nhận ra `java`, `scala`, `sbt`, `hadoop` hoặc `spark-submit`, nghĩa là toolchain Lab 1 chưa được nạp vào môi trường hiện tại. Hãy mở đúng WSL/Ubuntu và kiểm tra lại `JAVA_HOME`, `HADOOP_HOME`, `SPARK_HOME` và `PATH`.
+- Nếu chưa có lệnh `sbt` nhưng đã có một JDK 8 chạy được, bạn vẫn có thể boot SBT bằng `java -jar sbt-launch.jar ...` để chạy `clean test assembly`.
+- Nếu đang ở Windows PowerShell mà WSL chưa cài, các lệnh trong tài liệu này sẽ không chạy trực tiếp; tài liệu này giả định môi trường WSL như phần mở đầu đã nêu.
+
+## 15. Chạy bộ Python đối chiếu
+
+Nếu bạn chỉ cần sinh 4 file CSV để so sánh kết quả giữa các cách cài đặt, dùng bộ script trong `python/`.
+Các script này chỉ làm đến bước tạo file kết quả, không benchmark, không thống kê và không sinh evidence phụ.
+
+```bash
+cd "$LAB3_ROOT"
+python python/main.py --input "$INPUT_CSV" --output-dir "$LAB3_ROOT/python/output"
+```
+
+Nếu bạn không truyền `--input`, `main.py` sẽ tự tìm `Amazon Sale Report.csv` ở workspace gốc.
+Nếu muốn đổi độ chính xác cho phần `approx` của Task 2-2, thêm `--accuracy <so_nguyen>`.
+
+Kết quả sẽ nằm trong:
+
+- `python/output/Task_1-1.csv`
+- `python/output/Task_1-2.csv`
+- `python/output/Task_2-1.csv`
+- `python/output/Task_2-2.csv`
+
+Lưu ý:
+
+- `Task_2-1.csv` và `Task_2-2.csv` trong thư mục `python/` là bản xuất CSV để đối chiếu.
+- Luồng Scala gốc vẫn giữ đầu ra Parquet cho các bài 2-1 và 2-2 nếu bạn chạy theo các lệnh ở mục trước.

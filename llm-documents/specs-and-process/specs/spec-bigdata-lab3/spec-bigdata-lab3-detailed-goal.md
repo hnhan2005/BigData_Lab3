@@ -5,6 +5,7 @@
 > **Nguồn yêu cầu gốc**: [`Lab 3 - MR-Spark.pdf`](../../../../Lab%203%20-%20MR-Spark.pdf)
 
 ## Spec Goal
+Revision note 2026-08-12: this spec now also requires a WSL-friendly README with `<user_name>`/`$HOME` placeholders, a flattened task source layout under `src/Task_*`, and no top-level `scripts/` directory in the final submission.
 
 Tạo đầy đủ artefact có thể chấm và tái lập cho bốn bài toán Advanced MapReduce và Spark Structured APIs bằng Scala, tuân thủ chính xác điều kiện lọc/tổng hợp, thuật toán bắt buộc, định dạng output, nội dung báo cáo và cấu trúc nộp bài do giảng viên quy định.
 
@@ -46,6 +47,7 @@ Spec biến đề bài PDF thành các yêu cầu quan sát và kiểm thử đ�
 5. WHEN cung cấp mã nguồn THEN mã SHALL có comment rõ ràng cho các phần xử lý không hiển nhiên.
 
 ### R-GEN-02 — Khả năng chạy lại và README tiếng Việt
+Revision note 2026-08-12: README must target WSL, use `<user_name>`/`$HOME` placeholders, and describe the full install -> config -> build -> run -> validate -> package sequence directly in terminal commands rather than pointing to a `/scripts` directory.
 
 **User Story:** Là người chấm, tôi muốn README tiếng Việt mô tả lệnh terminal theo từng bước, để có thể thiết lập, chạy và kiểm tra từng task.
 
@@ -296,6 +298,8 @@ Spec biến đề bài PDF thành các yêu cầu quan sát và kiểm thử đ�
 4. WHEN trình bày kết quả THEN Report SHALL chứa hoặc tham chiếu bằng chứng test/export/correctness phù hợp để hỗ trợ các tiêu chí chấm còn lại.
 
 ### R-SUB-02 — Cấu trúc thư mục bắt buộc
+Revision note 2026-08-12: the final submission tree flattens task source roots to `src/Task_*` direct roots and omits a top-level `scripts/` directory.
+Note: if the folder layout changes, any scripts, source path literals, build settings, or docs that point into the old tree must be updated in the same scope so commands still resolve correctly.
 
 **User Story:** Là đại diện nhóm, tôi muốn package đúng cấu trúc, để Moodle chấp nhận và Drive chứa đúng output.
 
@@ -399,4 +403,5 @@ Các giả định này giữ requirement testable nhưng chưa được coi là
 - **Status**: Approved
 - **Confirmed by**: Người dùng
 - **Confirmation date**: 2026-08-10
+- **Revision note (2026-08-12)**: Scope changed to require WSL-friendly README commands, flattened task source roots, and no top-level `scripts/` directory.
 - **Notes / required revisions before design**: Người dùng trả lời “approved”. Những điểm chưa có dữ kiện từ giảng viên được Design giải quyết bằng quyết định và giả định công khai, có thể sửa nếu nhận được clarification sau đó.

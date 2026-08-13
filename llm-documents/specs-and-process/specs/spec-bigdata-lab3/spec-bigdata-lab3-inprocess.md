@@ -8,6 +8,7 @@
 > - [Implementation Checklist](./spec-bigdata-lab3-implementation-checklist.md)
 
 ## Spec Goal
+Scope update 2026-08-12: final submission no longer requires a top-level `scripts/` directory, task source roots are flattened to `src/Task_*`, and `docs/README.md` must be a WSL-friendly runbook that uses placeholders such as `<user_name>` and documents the full install -> config -> build -> run -> validate -> package order. Any scripts, source path literals, and CLI examples that depend on the old tree must be updated together with the layout change.
 
 Xây dựng một bài nộp nhóm thống nhất, chạy được bằng Scala trên môi trường Hadoop/Spark cục bộ đã cài từ Lab 1, giải đúng bốn bài toán trong đề bằng MapReduce và Spark Structured APIs, xuất đúng bốn tệp kết quả trên filesystem thông thường, đồng thời cung cấp báo cáo phân tích và README tiếng Việt đủ để chạy lại từng bước từ terminal.
 
@@ -56,9 +57,9 @@ Xây dựng một bài nộp nhóm thống nhất, chạy được bằng Scala 
 
 ## Phase Approvals
 
-- **Detailed Goals**: Approved — người dùng xác nhận ngày 2026-08-10
-- **Detailed Design**: Approved — người dùng xác nhận ngày 2026-08-10
-- **Implementation Checklist**: Approved — người dùng xác nhận ngày 2026-08-10
+- **Detailed Goals**: Approved — scope update ngày 2026-08-12 (bỏ `scripts/`, rút gọn task source roots, WSL README)
+- **Detailed Design**: Approved — scope update ngày 2026-08-12 (bỏ `scripts/`, rút gọn task source roots, WSL README)
+- **Implementation Checklist**: Approved — scope update ngày 2026-08-12 (bỏ `scripts/`, rút gọn task source roots, WSL README)
 
 ## During Spec
 
@@ -71,6 +72,7 @@ Xây dựng một bài nộp nhóm thống nhất, chạy được bằng Scala 
   - 2026-08-10: Detailed Goals được người dùng phê duyệt; spec chuyển sang phase Design.
   - 2026-08-10: Detailed Design được người dùng phê duyệt; spec chuyển sang phase Implementation Checklist.
   - 2026-08-10: Implementation Checklist được người dùng phê duyệt; spec chuyển sang Code Execution.
+  - 2026-08-12: Người dùng yêu cầu bỏ `scripts/`, rút gọn task source roots và chuẩn hóa README cho WSL/<user_name>; các tài liệu goals/design/checklist phải được duyệt lại sau khi cập nhật.
 
 ## Spec Review
 

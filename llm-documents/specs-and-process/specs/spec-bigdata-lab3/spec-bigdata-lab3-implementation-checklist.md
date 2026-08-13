@@ -6,6 +6,8 @@
 > - [Main Spec](./spec-bigdata-lab3-inprocess.md)
 
 ## Context
+Revision note 2026-08-12: the revised submission target removes the top-level `scripts/` directory, flattens task source roots to `src/Task_*` direct roots, and treats `docs/README.md` as the authoritative WSL-friendly runbook with `<user_name>` placeholders.
+Note: after flattening the tree, update scripts and any source path references/CLI examples so they target the new locations, not the legacy `source` layout.
 
 Đây là nguồn sự thật trung tâm trong phase Code Execution. Mỗi task phải được chuyển `[ ] → [/] → [x]`, chỉ đánh dấu hoàn tất sau khi test và acceptance criteria tương ứng qua. Mỗi work session phải cập nhật cả Execution Log bên dưới và `implementation-notes.md`; mọi design drift phải sửa Detailed Design trước khi tiếp tục code.
 
@@ -18,6 +20,7 @@ Không có database/PostgreSQL trong spec. Persistence verification áp dụng c
 - **Status**: Approved
 - **Confirmed by**: Người dùng
 - **Confirmation date**: 2026-08-10
+- **Revision note (2026-08-12)**: Scope changed to require WSL-friendly README commands, flattened task source roots, and no top-level `scripts/` directory.
 - **Notes / required revisions before code execution**: Người dùng trả lời “approved”. Actual environment vẫn phải qua Phase 0 compatibility gate.
 
 ## Sequencing Strategy
@@ -106,6 +109,7 @@ flowchart LR
   - Cấu hình Scala 2.11.12, Hadoop 3.3.6/Spark baseline ở scope `provided`, Commons CSV, ScalaTest và assembly jar không bundle Hadoop/Spark.
   - Khai báo unmanaged source directories cho `src/common/source` và bốn `src/Task_*/source`; pin SBT/plugin versions tương thích Java 8.
   - _Requirements: R-GEN-01, R-SUB-02_ — _Design: Sec 4.6, 7.1_
+  - Revised layout note: `src/Task_*` is the target direct task-root convention; treat older `src/Task_*/source` wording as legacy.
 - [x] 0.4 Viết preflight script và smoke test build
   - Script chỉ đọc/kiểm tra môi trường, trả non-zero cùng hướng dẫn rõ khi mismatch/missing.
   - Chạy `sbt clean test`/assembly smoke; xác nhận JAR không chứa Spark/Hadoop classes provided.
@@ -490,6 +494,7 @@ flowchart LR
 **Tasks**:
 
 - [x] 8.1 Viết README tiếng Việt terminal-first
+  - README must be a WSL-friendly runbook with `<user_name>` / `$HOME` placeholders and a single ordered flow from install -> config -> build -> run -> validate -> package.
   - Prerequisites/version checks; build; HDFS/YARN; input upload; từng task command; output retrieval; validation; full run; packaging.
   - Mỗi code block có chú thích ngắn, expected output và troubleshooting cho path/version/output exists.
   - _Requirements: R-GEN-02_ — _Design: Sec 5.8, 7.2–7.5, 8.1_

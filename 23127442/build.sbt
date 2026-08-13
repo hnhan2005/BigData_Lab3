@@ -9,10 +9,10 @@ lazy val root = (project in file("."))
     name := "bigdata-lab3",
     Compile / unmanagedSourceDirectories ++= Seq(
       baseDirectory.value / "src" / "common" / "source",
-      baseDirectory.value / "src" / "Task_1-1" / "source",
-      baseDirectory.value / "src" / "Task_1-2" / "source",
-      baseDirectory.value / "src" / "Task_2-1" / "source",
-      baseDirectory.value / "src" / "Task_2-2" / "source"
+      baseDirectory.value / "src" / "Task_1-1",
+      baseDirectory.value / "src" / "Task_1-2",
+      baseDirectory.value / "src" / "Task_2-1",
+      baseDirectory.value / "src" / "Task_2-2"
     ),
     libraryDependencies ++= Seq(
       "org.apache.hadoop" % "hadoop-common" % "3.3.6" % Provided,

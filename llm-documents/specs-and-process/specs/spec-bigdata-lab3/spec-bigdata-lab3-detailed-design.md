@@ -5,6 +5,8 @@
 > **Next**: Implementation Checklist — chỉ tạo sau khi tài liệu này được xác nhận
 
 ## 1. Overview
+Revision note 2026-08-12: the final submission contract now flattens task source roots to `src/Task_*`, omits a top-level `scripts/` directory, and expects `docs/README.md` to carry the WSL-friendly terminal runbook with `<user_name>` placeholders.
+Note: the layout change also includes fixing any scripts or source-level path references that would otherwise break after flattening the tree.
 
 Lời giải là một project Scala/SBT thống nhất gồm bốn command-line jobs: hai pipeline Hadoop MapReduce chạy trên pseudo-distributed Hadoop và hai Spark jobs dùng duy nhất DataFrame/Dataset transformations. Một lớp parse/chuẩn hóa dùng chung giữ semantics nhất quán; mỗi task có pipeline riêng, kiểm thử fixture tính tay và exporter tạo đúng một tệp vật lý trên local filesystem. Report source, evidence logs và README tiếng Việt được đặt cùng submission tree để có thể tái lập từ terminal.
 
@@ -30,6 +32,8 @@ Lời giải là một project Scala/SBT thống nhất gồm bốn command-line
 - Source documents cho README/Report và vị trí evidence.
 
 ### Out of Scope
+
+- Top-level `scripts/` directory as a required submission artifact; shell workflow is documented in `docs/README.md` instead.
 
 - Database, REST API, UI, streaming, cloud/Colab và production deployment.
 - Tự động upload Google Drive hoặc submit Moodle.
@@ -467,11 +471,11 @@ Không có database migration/backfill. Input không bị sửa. Rebuild toàn b
   project/build.properties
   src/
     common/source/...
-    Task_1-1/source/...
-    Task_1-2/source/...
-    Task_2-1/source/...
-    Task_2-2/source/...
-    test/scala/...
+    Task_1-1/...
+    Task_1-2/...
+    Task_2-1/...
+    Task_2-2/...
+  test/scala/...
   docs/
     README.md
     Report.md
@@ -479,6 +483,8 @@ Không có database migration/backfill. Input không bị sửa. Rebuild toàn b
     drive_link.txt
     evidence/...
 ```
+
+Task_* roots are direct source roots. A top-level `scripts/` directory is not part of the final submission; shell workflow lives in `docs/README.md`.
 
 `source/` của từng task chứa main và task-specific classes đúng cấu trúc đề; shared code nằm `src/common/source` để tránh copy logic. Build files là artefact hỗ trợ ở root.
 
@@ -801,6 +807,7 @@ Không có database hoặc PostgreSQL. Persistence verification áp dụng cho f
 - **Status**: Approved
 - **Confirmed by**: Người dùng
 - **Confirmation date**: 2026-08-10
+- **Revision note (2026-08-12)**: Scope changed to require WSL-friendly README commands, flattened task source roots, and no top-level `scripts/` directory.
 - **Notes / required revisions before implementation planning**:
   - Người dùng trả lời “approved”.
   - Actual `spark-submit --version` vẫn chưa được cung cấp; checklist đặt preflight compatibility gate là task đầu tiên. Nếu khác baseline Spark 2.4.8/Scala 2.11.12, phải cập nhật Design trước khi viết Spark source.
