@@ -4,7 +4,7 @@ Tài liệu này là runbook trực tiếp cho WSL. Không cần thư mục `scr
 
 Trước khi bắt đầu, hãy bảo đảm máy có:
 - WSL2 hoặc một môi trường Ubuntu có `sudo`.
-- Java 8, Scala 2.11.12, Hadoop 3.3.6, Spark 2.4.8 và sbt 1.10.6.
+- Java 8, Scala 2.11.12, Hadoop 3.3.6, Spark 2.4.8 và sbt 1.5.8.
 - Các tiện ích `zip`, `unzip`, `curl`, `wget`, `tar`, `git`.
 
 ## 0. Quy ước đường dẫn
@@ -43,7 +43,7 @@ sudo apt install -y openjdk-8-jdk curl wget tar unzip git zip
 curl -s "https://get.sdkman.io" | bash
 source "$HOME/.sdkman/bin/sdkman-init.sh"
 sdk install scala 2.11.12
-sdk install sbt 1.10.6
+sdk install sbt 1.5.8
 ```
 
 ### 1.3 Giải nén Hadoop và Spark
@@ -78,7 +78,7 @@ spark-submit --version
 sbt --version
 ```
 
-Mục tiêu: xác nhận Java 8, Scala 2.11.12, Hadoop 3.3.6, Spark 2.4.8 build cho Scala 2.11 và sbt đã sẵn sàng.
+Mục tiêu: xác nhận Java 8, Scala 2.11.12, Hadoop 3.3.6, Spark 2.4.8 build cho Scala 2.11 và sbt 1.5.8 đã sẵn sàng.
 
 ## 4. Khởi động Hadoop pseudo-distributed
 

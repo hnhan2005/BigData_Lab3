@@ -26,6 +26,9 @@
 - 2026-08-13 - Recursive deletion of the old empty task folders is blocked by workspace policy, so hidden `.lab3` / `.source` leftovers remain on disk; the package command in `docs/README.md` excludes `src/Task_*/.*` to keep the ZIP clean.
 - 2026-08-13 - `sbt clean test assembly` succeeded from `23127442/` after switching to JDK 8. The submission tree itself has no `src/test` sources, so the `test` phase had nothing extra to execute beyond compile/assembly.
 - 2026-08-13 - The Python `Task_2-2` `approx` branch uses a deterministic sample-based approximation so the scripts stay stdlib-only and are suitable for CSV comparison, not benchmark reporting.
+- 2026-08-13 - Installed Temurin JDK 8 and sbt 1.5.8 directly in the Windows terminal via `winget`; `project/build.properties` already pinned the repo to sbt 1.5.8, so the README prerequisite line was corrected to match reality.
+- 2026-08-13 - Downloaded Spark 2.4.8 and Hadoop 3.3.6 runtimes plus `winutils.exe`/`hadoop.dll` to exercise the lab scripts locally on Windows.
+- 2026-08-13 - Ran `sbt clean test assembly`, then executed `Task11Main`, `Task12Main`, `Task21Main`, `Task22Main`, and `ValidationMain` against the workspace CSV. The generated `Task_1-1.csv`, `Task_1-2.csv`, `Task_2-1.parquet`, and `Task_2-2.parquet` all matched the Python reference outputs, and validation passed.
 
 ## Surprises / Gotchas
 
@@ -46,5 +49,4 @@
 
 ## External Inputs Still Required
 
-- Actual target `spark-submit --version` output if it is not available in this workspace.
 - The final Google Drive URL is still required before packaging.
