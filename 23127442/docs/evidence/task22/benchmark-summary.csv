@@ -1,0 +1,3 @@
+method,runs,mean_ms,sample_stddev_ms
+approx,5,782.8,19.26655132606767
+exact,5,866.6,25.793410011086166

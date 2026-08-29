@@ -1,0 +1,11 @@
+method,run,elapsed_ms
+approx,1,808
+exact,1,900
+exact,2,883
+approx,2,771
+approx,3,761
+exact,3,850
+exact,4,865
+approx,4,777
+approx,5,797
+exact,5,835
