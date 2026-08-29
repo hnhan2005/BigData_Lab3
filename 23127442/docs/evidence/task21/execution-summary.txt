@@ -1,0 +1,6 @@
+job_group=lab3-task21
+master=local[2]
+spark_version=2.4.8
+join_strategies=BroadcastHashJoin,SortMergeJoin
+exchange_count=8
+stage_ids=0,1,2,3,4,5,6,7,8,9,14,15,16

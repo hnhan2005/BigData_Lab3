@@ -1,0 +1,6 @@
+valid_rows=128975
+group_count=16486
+maximum_group_rows=426
+groups_above_1000=0
+estimated_bytes_per_row=128
+estimated_maximum_group_bytes=54528

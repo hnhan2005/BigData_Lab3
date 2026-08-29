@@ -1,0 +1,7 @@
+spark_version=2.4.8
+master=local[2]
+accuracy=10000
+runs=5
+exchange_count=11
+join_strategies=BroadcastHashJoin
+benchmark_stage_ids=52,53,54,55,56,57,58,59,62,65,68,71,74,77,80,83,86,89
