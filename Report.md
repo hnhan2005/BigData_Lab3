@@ -137,7 +137,9 @@ Như vậy, lớp tiền xử lý chịu trách nhiệm biến CSV thô thành d
 
 ### 3.1. Yêu cầu và cách hiểu
 
-Với mỗi state và ngày `d`, chọn size thắng trong các ngày trước đó. Window length phụ thuộc tổng bought records của state:
+Task 1-1 được mô hình hóa như một bài toán aggregation theo thời gian trên Hadoop MapReduce. Với mỗi cặp `(state, d)`, hệ thống phải xác định size có hiệu năng tốt nhất trong cửa sổ các ngày đứng ngay trước ngày `d`. Đơn vị quan sát là một CSV row đã parse thành record hợp lệ; không gộp các row có cùng `Order ID` và không thay `frequency` bằng tổng `Qty`.
+
+Window length phụ thuộc tổng số bought records của từng state:
 
 ```text
 L(state) = 5, nếu tổng bought records > 10.000
@@ -146,15 +148,17 @@ L(state) = 5, nếu tổng bought records > 10.000
 
 Frequency là số bought records, không phải tổng Qty. Baseline slide nêu Maharashtra và Karnataka dùng 5 ngày; các state còn lại dùng 10 ngày.
 
+Một row được xem là bought khi `Status` sau chuẩn hóa chứa chuỗi `SHIPPED` và `Qty > 0`. Điều kiện này loại các row có Qty bằng 0 hoặc âm, đồng thời vẫn bao phủ các biến thể trạng thái như `SHIPPED - DELIVERED TO BUYER` và `SHIPPED - RETURNED TO SELLER`.
+
 ### 3.2. Công thức và luật thắng
 
-Record ngày `t` được phát tới:
+Với một bought record có state `s`, ngày nguồn `t` và size `z`, mapper không phát record vào chính ngày `t` mà phát vào từng ngày tương lai:
 
 ```text
 (state, t+1, size), ..., (state, t+L, size)
 ```
 
-Accumulator của một size gồm:
+Khi reducer nhận khóa `(s, d, z)`, tập record tương ứng chính là các record của size `z` trong khoảng ngày nguồn `[d-L(s), d-1]`. Mỗi group được biểu diễn bằng một accumulator `Moment` gồm:
 
 ```text
 count       = số record
@@ -169,11 +173,13 @@ Population variance:
 variance = sumSquares / amountCount - (sum / amountCount)²
 ```
 
-Comparator:
+Population variance được dùng vì bài toán mô tả độ phân tán của toàn bộ các Amount trong cửa sổ, không phải ước lượng mẫu. Comparator chọn winner theo thứ tự ưu tiên:
 
 1. Frequency lớn hơn thắng.
-2. Nếu hòa, variance nhỏ hơn thắng.
-3. Nếu tiếp tục hòa, size có lexical order nhỏ hơn thắng.
+2. Nếu frequency bằng nhau, variance nhỏ hơn thắng.
+3. Nếu frequency và variance cùng hòa, size có thứ tự từ điển nhỏ hơn thắng.
+
+Khi `Amount` bị thiếu, row vẫn đóng góp vào `count` nhưng không đóng góp vào `amountCount`, `sum` hoặc `sumSquares`. Nếu một candidate không có Amount hợp lệ, variance của candidate được xem là không xác định; khi phá hòa, candidate có variance hữu hạn được ưu tiên hơn candidate không có variance.
 
 ### 3.3. Decomposition và mã nguồn
 
@@ -185,9 +191,21 @@ Comparator:
 
 Source: [`Task11Main.scala`](23127442/src/Task_1-1/Task11Main.scala), [`BoughtCountJob.scala`](23127442/src/Task_1-1/BoughtCountJob.scala), [`BucketJob.scala`](23127442/src/Task_1-1/BucketJob.scala), [`Winner.scala`](23127442/src/Task_1-1/Winner.scala), [`Moment.scala`](23127442/src/Task_1-1/Moment.scala).
 
+Vai trò của các file thực thi được phân tách như sau:
+
+| File | Vai trò triển khai |
+|---|---|
+| `Task11Main.scala` | Nhận tham số, tạo các đường dẫn trung gian `state-counts`, `buckets`, `winners`, điều phối ba job và gọi exporter. |
+| `BoughtCountJob.scala` | Job 0: lọc bought record, đếm theo state và dùng `LongSumReducer` làm combiner/reducer. |
+| `BucketJob.scala` | Job A: phát record vào các ngày tương lai, cộng `Moment` ở combiner/reducer và tạo candidate theo state/ngày/size. |
+| `WinnerJob.scala` | Job B: gom candidate theo `(state, window_date)`, chọn một winner và phát CSV row. |
+| `Winner.scala` | Đóng gói comparator frequency → variance → size, độc lập với thứ tự candidate đầu vào. |
+| `Moment.scala` và `MomentWritable.scala` | Biểu diễn accumulator và serialization Hadoop; cho phép cộng dồn bốn moment trong quá trình shuffle. |
+| `Task11Keys.scala` | Tạo/parse composite key cho bucket và window; `WindowConfig` truyền map state → window length an toàn qua configuration. |
+
 ### 3.4. Input/output contract và pseudocode
 
-Input của cả ba job là cùng một CSV. Intermediate output chỉ dùng nội bộ; output cuối có schema:
+Input của cả ba job là cùng một CSV 24 cột. Các output trung gian chỉ có ý nghĩa trong work path của Hadoop; file cần nộp là một CSV duy nhất với schema:
 
 ```text
 state,window_date,window_days,winning_size,frequency,population_variance
@@ -204,7 +222,7 @@ winners = chooseWinnerByStateDate(candidates, frequency, variance, size)
 exportSingleCsv(winners)
 ```
 
-Một record có `Amount=NULL` vẫn tạo một `Moment(count=1, amountCount=0)`. Khi combine, `count` vẫn tăng còn `sum/sumSquares` không tăng. Nhờ vậy frequency không bị phụ thuộc vào việc Amount có bị thiếu hay không.
+Quy trình này bảo đảm driver xác định `L(state)` trước Job A. Nếu xác định window trong từng mapper, cùng một state có thể bị xử lý không nhất quán; vì vậy map state → window được đọc từ kết quả Job 0 và truyền vào configuration. Một record có `Amount=NULL` vẫn tạo một `Moment(count=1, amountCount=0)`. Khi combine, `count` vẫn tăng còn `sum/sumSquares` không tăng. Nhờ vậy frequency không bị phụ thuộc vào việc Amount có bị thiếu hay không.
 
 ### 3.5. Lập luận tính đúng đắn
 
@@ -230,15 +248,15 @@ Với `R` bought records, window `L` và số bucket `B`:
 - Combiner giảm dữ liệu truyền nhưng không đổi worst-case.
 - Job B phụ thuộc số candidate trong từng state/date.
 
+Chi phí lớn nhất nằm ở Job A vì một record có thể tạo tối đa `L` bản ghi trung gian. Với rule hiện tại, `L` chỉ nhận giá trị 5 hoặc 10, nên chi phí phát là hằng số nhỏ theo mỗi record nhưng vẫn có ý nghĩa khi dữ liệu tăng. `MomentCombiner` không thay đổi kết quả vì phép cộng moment có tính kết hợp; nó làm giảm số value phải truyền qua shuffle khi cùng mapper tạo nhiều value cho một key. Các mốc `925.395`, `219.132` và `27.134` trên slide được ghi như các mốc minh họa cho naive/difference-array/combiner, không được khẳng định là Hadoop counter của lần chạy Windows hiện tại vì môi trường đó thiếu `winutils.exe`.
+
 Slide nêu các mốc shuffle cần ghi trong Report: naive 925.395 phiếu, difference-array 219.132 phiếu và combiner 27.134 phiếu. Lần chạy Windows chưa lấy được Hadoop counters vì thiếu `winutils.exe`.
 
 ### 3.8. Kết quả và kiểm thử
 
-- `Task_1-1.csv` có 3.696 dòng.
-- Ngày lớn nhất là `2022-07-09`.
-- Size `M` là winner nhiều nhất, xuất hiện 1.299 lần theo baseline slide.
-- Independent recomputation có cùng keys/winner/frequency; sai khác variance tối đa khoảng `2.91e-11` do thứ tự tính số thực.
-- Amount null vẫn được tính frequency nhưng không vào variance.
+Kết quả cuối gồm 3.696 data rows và một header. Ngày lớn nhất là `2022-07-09`, lớn hơn ngày lớn nhất của input do cơ chế phát bucket về tương lai. Phân bố winner cho thấy size `M` xuất hiện nhiều nhất với 1.299 cửa sổ, tiếp theo là `L` với 994 và `XL` với 543; đây là kết quả phù hợp với baseline slide.
+
+Independent recomputation xác nhận các khóa `(state, window_date)`, `winning_size` và `frequency` trùng với output. Sai khác variance tối đa khoảng `2.91e-11`, được giải thích bởi thứ tự cộng số thực khác nhau giữa các phép tính. `OutputValidator` tiếp tục kiểm tra header, khóa không trùng, window days chỉ thuộc `{5,10}`, frequency dương và variance không âm.
 
 **Ghi chú ảnh — Hình 3 (phần 3.3)**: Chèn sơ đồ Job 0 → Job A → Job B.
 
@@ -250,14 +268,14 @@ Slide nêu các mốc shuffle cần ghi trong Report: naive 925.395 phiếu, dif
 
 ### 4.1. Yêu cầu và cách hiểu
 
-Variety của style trong `(state, month)` là số SKU distinct. Chỉ dùng bought rows.
+Task 1-2 đo mức độ đa dạng sản phẩm của từng style trong mỗi cặp `(state, month)`. Đại lượng variety được định nghĩa là số lượng `SKU` phân biệt thuộc style đó trong nhóm, không phải số dòng CSV và không phải số lượng đơn hàng. Phép tính chỉ sử dụng bought rows để bảo đảm cùng semantics với Task 1-1.
 
 Điểm mơ hồ là scope của “style từng bán size ≥ XXL”:
 
 - **Local**: xét trong từng `(state, month)`.
 - **Global**: chỉ cần style từng có size ≥ XXL ở bất kỳ state/tháng nào.
 
-Bài làm chọn **global** vì khớp file đáp án giảng viên. Vì vậy style qualifying ở một nơi vẫn được tính variety tại state/month khác nếu có bought rows.
+Bài làm chọn **global** vì khớp file đáp án giảng viên. Vì vậy style qualifying ở một nơi vẫn được tính variety tại state/month khác nếu có bought rows. Đây là lựa chọn về phạm vi của điều kiện lọc, không phải thay đổi khóa group: variety cuối cùng vẫn được tính theo từng `(state, month, style)`.
 
 ### 4.2. Công thức
 
@@ -271,6 +289,17 @@ Median trên các variety đã sort:
 - `n` lẻ: lấy phần tử giữa.
 - `n` chẵn: lấy trung bình hai phần tử giữa.
 
+Với cách global, có thể viết rõ thành ba tập hợp:
+
+```text
+Q = { style | ∃ row: bought(row) ∧ sizeRank(row.size) ≥ sizeRank("XXL") }
+V(s,m,z) = |{ sku | row.state=s ∧ row.month=m ∧ row.style=z
+                    ∧ bought(row) ∧ z ∈ Q }|
+M(s,m) = median({ V(s,m,z) | V(s,m,z) tồn tại })
+```
+
+`qualifying_style_count` là số style `z` có giá trị `V(s,m,z)`, còn `median_variety` là median trên các giá trị variety đó. Do đó hai cột output đo hai khía cạnh khác nhau: số style đủ điều kiện xuất hiện trong nhóm và mức variety điển hình của các style đó.
+
 ### 4.3. Decomposition và mã nguồn
 
 **Job A1**: lọc bought row có size ≥ XXL, emit style, reducer loại trùng và tạo global style set.
@@ -283,9 +312,20 @@ Global set được truyền sang Job A2 bằng Base64-safe Hadoop configuration
 
 Source: [`GlobalStyleJob.scala`](23127442/src/Task_1-2/GlobalStyleJob.scala), [`VarietyJob.scala`](23127442/src/Task_1-2/VarietyJob.scala), [`MedianJob.scala`](23127442/src/Task_1-2/MedianJob.scala), [`Task12Main.scala`](23127442/src/Task_1-2/Task12Main.scala).
 
+Vai trò của các file trong triển khai:
+
+| File | Vai trò triển khai |
+|---|---|
+| `Task12Main.scala` | Điều phối Job A1, đọc global style set, truyền set sang Job A2, chạy Job B và export CSV cuối. |
+| `GlobalStyleJob.scala` | Duyệt bought rows và phát style có size từ XXL trở lên; reducer loại trùng để tạo tập `Q`. |
+| `VarietyJob.scala` | Giữ các row có style thuộc `Q`, group theo `(state, month, style)` và tạo tập SKU distinct. |
+| `StyleVariety.scala` | Cài đặt phép đếm SKU distinct bằng tập hợp trong reducer. |
+| `MedianJob.scala` và `Median.scala` | Gom các variety theo `(state, month)`, sort và tính median exact cho số phần tử lẻ/chẵn. |
+| `Task12Keys.scala` | Tạo/parse composite key cho `(state, month, style)` và `(state, month)`. |
+
 ### 4.4. Input/output contract, pseudocode và tính đúng đắn
 
-Input của Job A1 là toàn bộ CSV ở row grain. Job A1 tạo một tập `qualifyingStyles`; tập này là dữ liệu điều khiển cho Job A2 chứ không phải một kết quả cuối cần nộp. Output cuối của Task 1-2 có schema:
+Input của Job A1 là toàn bộ CSV ở row grain. Job A1 tạo tập `Q = qualifyingStyles`; đây là dữ liệu điều khiển cho Job A2, không phải một output cần nộp. Output cuối của Task 1-2 có schema:
 
 ```text
 state,month,median_variety,qualifying_style_count
@@ -309,6 +349,8 @@ for (state, month) in groupByStateMonth(varieties):
     emit(state, month, median(values), len(values))
 ```
 
+Trình tự trên tương ứng với ba lần materialize/shuffle của MapReduce: xác định điều kiện global, tính variety ở cấp style, sau đó tính median ở cấp state-month. Tập global style nhỏ được mã hóa an toàn và truyền qua Hadoop configuration; điều này tránh phải broadcast một tập không kiểm soát nhưng vẫn giữ được phạm vi global.
+
 Lập luận tính đúng đắn:
 
 - A1 xét toàn bộ input nên một style được đánh dấu qualifying nếu và chỉ nếu tồn tại ít nhất một bought row có size ≥ XXL ở bất kỳ state/tháng nào; đây chính là cách hiểu global đã chọn.
@@ -326,26 +368,28 @@ Các edge case cần nêu trong report:
 
 ### 4.5. Độ phức tạp
 
-- Job A1: `O(R)` mapper và shuffle theo style.
-- Job A2: gần `O(R)`; reducer giữ tập SKU distinct của từng group.
-- Job B: group có `k` variety values cần `O(k log k)` để sort.
-- Bộ nhớ phụ thuộc group lớn nhất và số SKU distinct của group.
+Với `R` bought rows, `G` state-month-style groups và `k` là số style trong một state-month:
+
+- Job A1 đọc mỗi row một lần, có chi phí mapper `O(R)` và shuffle theo style.
+- Job A2 đọc gần `O(R)` row; reducer cần bộ nhớ theo số SKU distinct lớn nhất trong từng group.
+- Job B cần `O(k log k)` cho bước sort variety trong mỗi state-month; tổng chi phí là `Σ O(k_g log k_g)` theo các group `g`.
+- Chi phí truyền global style set qua configuration phụ thuộc kích thước `|Q|`, nhỏ hơn nhiều so với toàn bộ dataset trong lần chạy này.
 
 ### 4.6. Kết quả và so sánh scope
 
 Theo global:
 
-- Output có 143 state-month groups.
+- Output có 143 data rows, tương ứng 143 nhóm state-month.
 - Maharashtra `2022-04`: median `3.0`, 863 qualifying styles.
 - Output: [`Task_1-2.csv`](23127442/outputs/Task_1-2.csv).
 
 Đối chiếu local:
 
-- Có 128 groups.
+- Có 128 nhóm state-month.
 - Maharashtra `2022-04`: median `4.0`, 621 qualifying styles khi áp dụng bought predicate.
 - Chi tiết: [`task12-global-vs-local.csv`](23127442/docs/evidence/independent-validation/task12-global-vs-local.csv).
 
-Do 128 là mốc của local scope còn file đáp án dùng global, output chính không được sửa để ép về 128. Con số 647 style trên slide cũng không tái lập khi đồng thời áp dụng bought predicate đã chọn; local recomputation cho 621 style và median 4.0. Report cần ghi đây là baseline không tái lập được từ bộ rule hiện tại.
+Do 128 là mốc của local scope còn file đáp án dùng global, output chính không được sửa để ép về 128. Global bao phủ local nên trong đối soát hiện tại có 15 nhóm chỉ xuất hiện ở global; 128 nhóm còn lại là mặt bằng chung để so sánh. Câu “40/128 nhóm (31%)” trên slide là một thống kê minh họa mức nhạy cảm của kết quả khi đổi scope; slide không mô tả đầy đủ tiêu chí đếm “lệch”. Khi áp dụng đúng bộ rule hiện tại, phép tái lập độc lập cho 37/128 median khác nhau; vì vậy report không nên khẳng định lại số 40 như một kết quả mới nếu không có đúng phiên bản dữ liệu và tiêu chí của slide. Con số 647 style trên slide cũng không tái lập khi đồng thời áp dụng bought predicate đã chọn; local recomputation cho 621 style và median 4.0.
 
 **Ghi chú ảnh — Hình 6 (phần 4.3)**: Chèn sơ đồ A1 → global style set → A2 → Job B.
 
@@ -357,7 +401,9 @@ Do 128 là mốc của local scope còn file đáp án dùng global, output chí
 
 ### 5.1. Yêu cầu và công thức
 
-Denominator là record thỏa:
+Task 2-1 sử dụng Spark DataFrame API để tính tỷ lệ record Cancelled và Standard thỏa thêm điều kiện về promotion và Amount. Đơn vị tính vẫn là CSV row. Kết quả được tổng hợp ở cấp `(state, city)`; vì vậy một city trùng tên ở hai state khác nhau được xem là hai nhóm độc lập.
+
+Mẫu số `D` là tập record thỏa:
 
 ```text
 Status contains CANCELLED
@@ -365,20 +411,20 @@ AND ship-service-level = STANDARD
 AND state, city không null
 ```
 
-Promotion `p` hợp lệ nếu:
+Một promotion `p` hợp lệ nếu:
 
 ```text
 datediff(maxDate(p), minDate(p)) >= 2
 ```
 
-Record qualifying nếu:
+Một record trong `D` được xem là qualifying nếu:
 
 ```text
 valid_promotion_count >= 3
 AND Amount < state_average_amount
 ```
 
-State average chỉ tính `Fulfilment=MERCHANT`, `Courier Status=SHIPPED`, Amount khác null. Promotion count và state average được `LEFT JOIN` vào denominator để giữ record không có promotion.
+State average được tính riêng theo state, chỉ trên các record có `Fulfilment=MERCHANT`, `Courier Status=SHIPPED` và Amount khác null. Promotion count và state average được `LEFT JOIN` vào `D` để bảo toàn mẫu số, kể cả khi record không có promotion hợp lệ hoặc state chưa có average hợp lệ.
 
 ```text
 percentage = 100 × qualifying_orders / cancelled_standard_orders
@@ -386,16 +432,20 @@ percentage = 100 × qualifying_orders / cancelled_standard_orders
 
 ### 5.2. Decomposition và mã nguồn
 
-1. `SparkSaleReader` đọc explicit schema và chuẩn hóa cột.
-2. `PromotionFrames.tokens` explode, trim và deduplicate token.
-3. Group promotion để lấy min/max date và lọc span ≥ 2.
-4. Đếm valid promotion theo record.
-5. Tính state average.
-6. Tạo denominator, left join các bảng phụ.
-7. Tạo numerator và group `(state,city)`.
-8. Export một Parquet vật lý.
+Pipeline gồm tám bước logic:
+
+1. `SparkSaleReader` đọc CSV bằng explicit schema và chuẩn hóa các dimension/cột số.
+2. `PromotionFrames.tokens` tách chuỗi promotion thành từng token, trim và deduplicate theo `(record_id, promotion_id)`.
+3. Các token được group theo `promotion_id` để lấy `first_date`, `last_date` và `span_days`.
+4. Chỉ token thuộc promotion có `span_days >= 2` được giữ; sau đó đếm số promotion hợp lệ theo record.
+5. Tính average Amount theo state trên tập MERCHANT/SHIPPED.
+6. Lọc `D`, sau đó left join hai bảng phụ theo `record_id` và `state`.
+7. Đánh dấu `is_qualifying`, group theo `(state, city)`, đếm denominator/numerator và tính percentage.
+8. Ghi DataFrame thành Parquet rồi đọc lại schema trước khi chuyển part file thành output vật lý.
 
 Source: [`Task21Job.scala`](23127442/src/Task_2-1/Task21Job.scala), [`Task21Main.scala`](23127442/src/Task_2-1/Task21Main.scala), [`PromotionFrames.scala`](23127442/src/common/source/lab3/spark/PromotionFrames.scala).
+
+Trong đó, `Task21Job.scala` chứa logic DataFrame thuần túy và có thể kiểm tra độc lập bằng `buildFromBase`; `Task21Main.scala` chịu trách nhiệm khởi tạo Spark, ghi plan/evidence, thực hiện action và export. Các hàm trong `PromotionFrames.scala` là lớp biến đổi dùng chung cho token/lifespan, giúp Task 2-1 và Task 2-2 áp dụng cùng một chính sách promotion.
 
 ### 5.3. Input/output contract, pseudocode và tính đúng đắn
 
@@ -432,6 +482,8 @@ result = group enriched by (state, city)
          percentage = 100 * qualifying / count
 ```
 
+Về mặt dữ liệu, mọi cột output đều được suy ra từ cùng một tập `D` sau khi enrich; không có phép join inner nào được phép làm mất record mẫu số ngoài các điều kiện lọc ban đầu. Đây là điểm quan trọng vì dùng inner join với bảng promotion sẽ làm tỷ lệ bị sai theo hướng loại bỏ các record không có promotion.
+
 Lập luận tính đúng đắn:
 
 - `PromotionFrames.temporallyValidTokens` gom theo promotion ID và chỉ giữ token có khoảng ngày từ min đến max ít nhất hai ngày; một token lặp trong cùng record chỉ được tính một lần.
@@ -451,25 +503,22 @@ Các edge case và quyết định cần ghi rõ:
 
 ### 5.4. Physical execution plan
 
-Hai cấu hình cần phân tích:
+Hai cấu hình được chạy để đánh giá ảnh hưởng của broadcast join. Cấu hình mặc định cho phép Spark tự chọn chiến lược theo `spark.sql.autoBroadcastJoinThreshold`; cấu hình thứ hai đặt threshold bằng `-1`, buộc Spark không broadcast.
 
-| Cấu hình | Join mục tiêu | Exchange mục tiêu | Sort mục tiêu |
+| Cấu hình | Join strategy quan sát được | Exchange | Sort |
 |---|---:|---:|---:|
-| Mặc định | 3 `BroadcastHashJoin` | 4 | 0 |
-| Tắt broadcast | 3 `SortMergeJoin` | 7 | 6 |
+| Mặc định | `BroadcastHashJoin` và `SortMergeJoin` | 8 | 3 |
+| Tắt broadcast | `SortMergeJoin` | 9 | 7 |
 
-BroadcastHashJoin phù hợp khi một phía nhỏ được broadcast. Khi đặt `autoBroadcastJoinThreshold=-1`, Spark phải repartition và sort hai phía để dùng SortMergeJoin, nên Exchange/Sort tăng.
+Kết quả hiện tại cho thấy cấu hình mặc định vẫn có thể chứa nhiều chiến lược trong cùng một plan: bảng nhỏ theo state/promotion được broadcast, trong khi một join trung gian theo `record_id` vẫn dùng SortMergeJoin. Khi đặt `autoBroadcastJoinThreshold=-1`, các bảng join phải repartition và sort theo khóa, làm số Exchange tăng từ 8 lên 9 và số Sort tăng từ 3 lên 7.
 
-`explain(true)` gồm logical, analyzed, optimized và physical plan. Executed plan sau action mới phản ánh plan thật khi AQE/configuration được áp dụng.
+Các số trên được đếm từ executed plan sau action trong `execution-summary.txt`; chúng khác với mốc dự kiến trên slide (`3/4/0` và `3/7/6`) vì plan thực tế bao gồm cả các join nội bộ của bước xác định promotion, phép sort output và cách đếm node của evidence collector. `explain(true)` còn bao gồm logical, analyzed và optimized plan, nhưng chỉ executed plan mới phản ánh chiến lược thực sự sau khi cấu hình được áp dụng.
 
 Evidence: [`task21/extended-plan.txt`](23127442/docs/evidence/task21/extended-plan.txt) và [`task21/README.md`](23127442/docs/evidence/task21/README.md).
 
 ### 5.5. Kết quả và kiểm thử
 
-- 1.442 state-city groups.
-- Denominator 6.906 records.
-- Numerator 0; percentage 0% ở mọi group.
-- Có 18.332 record chứa Cancelled; 295 record có promotion nhưng mỗi record chỉ một mã, không đạt ≥3.
+Output có 1.442 nhóm state-city. Mẫu số gồm 6.906 record; numerator bằng 0 nên percentage bằng 0% ở mọi nhóm. Trong toàn bộ dữ liệu có 18.332 record chứa Cancelled; 295 record có promotion, nhưng mỗi record chỉ có một mã sau khi chuẩn hóa và deduplicate, nên không record nào đạt điều kiện tối thiểu ba promotion hợp lệ.
 
 Slide nêu baseline 6.909/1.435. Hai số này không tái lập từ CSV hiện tại sau parser/normalization, nhưng kết luận 0% khớp và được giữ nguyên trong Report.
 
@@ -480,7 +529,7 @@ Phân tích nguyên nhân cho thấy hai cách đếm khác nhau:
 | Implementation hiện tại | 6.906 | 1.442 | Loại 3 dòng thiếu state/city, group theo `(state, city)` |
 | Slide-like | 6.909 | 1.435 | Giữ cả candidate thiếu location và có dấu hiệu group theo `city` |
 
-Trong dataset thô, 6.909 là tổng số dòng Cancelled + Standard trước khi loại 3 dòng thiếu location. Con số 1.435 cũng trùng với distinct city khi giữ giá trị city rỗng. Đây là bằng chứng mạnh cho thấy slide có thể đang dùng mẫu số trước lọc location và khóa city-only, dù slide không mô tả đủ hai quy tắc này. Implementation giữ `(state, city)` và location hợp lệ để tránh gộp hai city trùng tên ở các state khác nhau. Cả hai cách đều cho percentage `0%`.
+Trong dataset thô, 6.909 là tổng số dòng Cancelled + Standard trước khi loại 3 dòng thiếu location. Con số 1.435 cũng trùng với distinct city khi giữ giá trị city rỗng. Đây là bằng chứng mạnh cho thấy slide có thể đang dùng mẫu số trước lọc location và khóa city-only, dù slide không mô tả đủ hai quy tắc này. Implementation giữ `(state, city)` và location hợp lệ để tránh gộp hai city trùng tên ở các state khác nhau. Cả hai cách đều cho percentage `0%`; do đó khác biệt nằm ở phạm vi mẫu số và khóa group, không làm thay đổi kết luận cuối.
 
 **Ghi chú ảnh — Hình 9 (phần 5.4)**: Chèn bảng join strategy, Exchange và Sort giữa cấu hình mặc định/tắt broadcast.
 
@@ -492,7 +541,9 @@ Trong dataset thô, 6.909 là tổng số dòng Cancelled + Standard trước kh
 
 ### 6.1. Yêu cầu và công thức
 
-Group key là `(SKU, month)`. Mỗi record có promotion count sau khi split/deduplicate token; token rỗng có count 0.
+Task 2-2 đánh giá hai phương pháp xác định ngưỡng promotion percentile trên cùng một dữ liệu: approximate bằng hàm dựng sẵn của Spark và exact bằng Window. Khóa phân tích là `(SKU, month)`, còn đơn vị quan sát là từng record. Việc giữ row grain là cần thiết vì percentile được tính trên phân phối số promotion của các record, không phải trên danh sách SKU distinct.
+
+Mỗi record nhận một `promotion_count` sau khi split/deduplicate token; trường promotion rỗng hoặc null cho count bằng 0. Hai mức percentile P80 và P90 được tính độc lập trong từng group.
 
 Với group có `N` records và percentile `p`:
 
@@ -507,19 +558,30 @@ Giữ record có `promotion_count >= threshold`, rồi tính:
 stddev_pop = sqrt(Σ(x - mean)² / n)
 ```
 
-Amount null không tham gia amount count/stddev. Nếu qualifying set có dưới 2 record hoặc không có Amount hợp lệ, output là `0.0`.
+Amount null không tham gia `amount_value_count` và `stddev_pop`, nhưng record vẫn được tính vào `qualifying_order_count`. Nếu qualifying set có dưới 2 record hoặc không có Amount hợp lệ, output là `0.0` theo contract của bài làm.
 
 ### 6.2. Decomposition và mã nguồn
 
-1. Tạo `skuMonthBase` ở row grain.
-2. Đếm promotion theo record.
-3. Approximate dùng Spark `percentile_approx`.
-4. Exact dùng Window partition, `row_number` và `ceil(p*N)`.
-5. Join threshold về record trong cùng group.
-6. Lọc qualifying và tính `stddev_pop`.
-7. Ghi approximate/exact cùng Parquet, có `method` và `percentile_level`.
+Pipeline được triển khai theo các bước:
+
+1. Tạo `skuMonthBase` gồm `record_id`, `sku`, `month`, `amount` và `promotion_count` ở row grain.
+2. Dùng promotion token đã chuẩn hóa để đếm promotion theo `record_id`; left join count vào base và thay null bằng 0.
+3. Tính approximate threshold bằng `percentile_approx(promotion_count, [0.8, 0.9], accuracy)`.
+4. Tính exact threshold bằng Window partition theo `(sku, month)`, sort `promotion_count` tăng dần và `record_id` tăng dần, sau đó chọn row có `row_number = ceil(p*N)`.
+5. Join từng threshold trở lại các record trong cùng group.
+6. Giữ record có `promotion_count >= threshold` và tính số record qualifying, số Amount hợp lệ cùng population standard deviation.
+7. Union kết quả approximate/exact, gắn nhãn `method` và `percentile_level`, rồi ghi thành một Parquet.
 
 Source: [`Task22Pipeline.scala`](23127442/src/Task_2-2/Task22Pipeline.scala), [`Task22Job.scala`](23127442/src/Task_2-2/Task22Job.scala), [`Task22Main.scala`](23127442/src/Task_2-2/Task22Main.scala), [`BenchmarkHarness.scala`](23127442/src/Task_2-2/BenchmarkHarness.scala).
+
+Vai trò của các file là:
+
+| File | Vai trò triển khai |
+|---|---|
+| `Task22Pipeline.scala` | Cài đặt toàn bộ phép biến đổi: tạo base, approximate/exact threshold, qualifying statistics, comparison và group-size profile. |
+| `Task22Job.scala` | Cung cấp các hàm đọc Spark input và wrapper cho các pipeline stage của Task 2-2. |
+| `Task22Main.scala` | Điều phối execution, ghi evidence, gọi benchmark, ghi extended plan và export Parquet. |
+| `BenchmarkHarness.scala` | Warm-up, chạy xen kẽ approximate/exact, đo elapsed time và tính mean/sample standard deviation. |
 
 ### 6.3. Input/output contract, pseudocode và tính đúng đắn
 
@@ -553,6 +615,8 @@ for threshold in approxThresholds ∪ exactThresholds:
     emit count(qualifying), count(non-null amount), stddev_pop(amount)
 ```
 
+Trong output, `threshold` là ngưỡng của đúng method và percentile tương ứng; không dùng threshold approximate để lọc tập exact hoặc ngược lại. Vì vậy bốn dòng của mỗi SKU-month có thể được kiểm tra độc lập.
+
 Lập luận tính đúng đắn:
 
 - `record_id` giữ row grain và làm khóa ổn định khi promotion count được join trở lại; không có bước deduplicate Order ID.
@@ -575,10 +639,10 @@ Với `N` records và group size `k`:
 
 - Base/promotion count: gần `O(N)`.
 - Approximate aggregate: gần `O(N)` theo aggregation structure.
-- Exact Window: khoảng `O(Σ k log k)` vì phải sort trong group.
+- Exact Window: khoảng `O(Σ k log k)` vì phải sort trong group; đây là nguyên nhân exact thường tốn thời gian hơn approximate.
 - Final statistics: `O(N)`.
 
-Dataset có 16.486 groups, group lớn nhất 426 rows, không có group trên 1.000 rows. Vì vậy không manual repartition theo group. Có thể benchmark `spark.sql.shuffle.partitions` từ 200 xuống 8–16 hoặc AQE coalesce nếu chạy target runtime.
+Dataset có 16.486 groups, group lớn nhất 426 rows, không có group trên 1.000 rows. Với ước lượng 128 bytes/row, group lớn nhất khoảng 54.528 bytes; do đó không cần manual repartition theo group trong cấu hình hiện tại. Có thể benchmark `spark.sql.shuffle.partitions` từ 200 xuống 8–16 hoặc AQE coalesce nếu chạy target runtime, nhưng mọi thay đổi cần được ghi kèm evidence vì có thể ảnh hưởng cả runtime lẫn physical plan.
 
 ### 6.5. Benchmark và kết quả
 
@@ -586,8 +650,8 @@ Benchmark phải warm-up, chạy ít nhất 5 lần/method, dùng cùng cached i
 
 | Method | Runs | Mean (ms) | Stddev (ms) | Cách tính |
 |---|---:|---:|---:|---|
-| Approximate | 5 | 782.8 | 19.2666 | `percentile_approx` |
-| Exact | 5 | 866.6 | 25.7934 | nearest-rank + Window |
+| Approximate | 5 | 704.8 | 11.7346 | `percentile_approx` |
+| Exact | 5 | 785.8 | 7.8549 | nearest-rank + Window |
 
 Evidence cần dùng: `benchmark-samples.csv`, `benchmark-summary.csv`, `threshold-deltas`, `set-difference-summary`, `set-difference-examples`, `group-profile.txt` và `extended-plan.txt`. Xem hướng dẫn tại [`task22/README.md`](23127442/docs/evidence/task22/README.md).
 
@@ -597,7 +661,7 @@ Kết quả full-data:
 - 16.486 SKU-month groups.
 - Group lớn nhất 426 rows; group >1.000 là 0.
 - Output có 65.944 rows = 4 dòng/group: approximate/exact × P80/P90.
-- Đối soát hiện tại không ghi nhận threshold difference.
+- Đối soát hiện tại không ghi nhận threshold difference; các qualifying set approximate/exact cũng không có phần tử chỉ thuộc một phía.
 
 Slide có nêu các tỷ lệ group bị lệch threshold giữa các cách tính percentile. Kết quả hiện tại không lặp lại các tỷ lệ đó vì implementation này chốt exact theo nearest-rank `ceil(p*N)` và approximate theo Spark `percentile_approx`; hơn nữa dataset/runtime đang dùng cho đối soát không tạo threshold delta. Vì vậy không được ghi rằng hai kết quả “giống slide tuyệt đối”; cần ghi rõ định nghĩa percentile, accuracy và dataset khi so sánh. Nếu chạy target runtime cho ra delta khác, phải thay số trong bảng bằng evidence target và giải thích ảnh hưởng tới qualifying set/stddev.
 
@@ -608,8 +672,8 @@ Slide có nêu các tỷ lệ group bị lệch threshold giữa các cách tín
 | Maximum group | 426 rows | `group-profile.txt` |
 | Groups > 1.000 | 0 | `group-profile.txt` |
 | Approx/exact threshold delta | 0 groups | `threshold-deltas` |
-| Approx mean/stddev | 782.8 / 19.2666 ms | `benchmark-summary.csv` |
-| Exact mean/stddev | 866.6 / 25.7934 ms | `benchmark-summary.csv` |
+| Approx mean/stddev | 704.8 / 11.7346 ms | `benchmark-summary.csv` |
+| Exact mean/stddev | 785.8 / 7.8549 ms | `benchmark-summary.csv` |
 
 **Ghi chú ảnh — Hình 12 (phần 6.5)**: Chèn biểu đồ cột mean runtime approximate/exact, lấy từ `benchmark-summary.csv`.
 
