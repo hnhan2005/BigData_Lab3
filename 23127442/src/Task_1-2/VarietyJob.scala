@@ -13,6 +13,13 @@ import scala.collection.JavaConverters._
 class VarietyMapper extends Mapper[LongWritable, Text, Text, Text] {
   private val outKey = new Text()
   private val outValue = new Text()
+  private var qualifyingStyles = Set.empty[String]
+
+  override protected def setup(
+    context: Mapper[LongWritable, Text, Text, Text]#Context
+  ): Unit = {
+    qualifyingStyles = GlobalStyleJob.stylesFrom(context.getConfiguration)
+  }
 
   override protected def map(
     key: LongWritable,
@@ -40,11 +47,13 @@ class VarietyMapper extends Mapper[LongWritable, Text, Text, Text] {
 
         dimensions match {
           case None => context.getCounter("LAB3_REJECTED", "MISSING_STATE_STYLE_OR_SKU").increment(1L)
-          case Some((state, style, sku)) =>
+          case Some((state, style, sku)) if qualifyingStyles.contains(style) =>
             outKey.set(Task12Keys.style(state, row.month, style))
-            outValue.set(Task12Keys.skuAndSize(sku, row.size.exists(Normalization.isAtLeastXXL)))
+            outValue.set(sku)
             context.write(outKey, outValue)
             context.getCounter("LAB3_DATA", "BOUGHT_COMPLETE_ROWS").increment(1L)
+          case Some(_) =>
+            context.getCounter("LAB3_DATA", "NON_QUALIFYING_STYLE_ROWS").increment(1L)
         }
     }
   }
@@ -59,23 +68,26 @@ class VarietyReducer extends Reducer[Text, Text, Text, LongWritable] {
     values: java.lang.Iterable[Text],
     context: Reducer[Text, Text, Text, LongWritable]#Context
   ): Unit = {
-    val entries = values.iterator().asScala.map(value => Task12Keys.parseSkuAndSize(value.toString))
-    StyleVariety.qualifyingVariety(entries) match {
-      case Some(variety) =>
-        val (state, month, _) = Task12Keys.parseStyle(key.toString)
-        outKey.set(Task12Keys.stateMonth(state, month))
-        outValue.set(variety)
-        context.write(outKey, outValue)
-        context.getCounter("LAB3_DATA", "QUALIFYING_STYLES").increment(1L)
-      case None =>
-        context.getCounter("LAB3_DATA", "NON_QUALIFYING_STYLES").increment(1L)
-    }
+    val variety = StyleVariety.distinctVariety(values.iterator().asScala.map(_.toString))
+    val (state, month, _) = Task12Keys.parseStyle(key.toString)
+    outKey.set(Task12Keys.stateMonth(state, month))
+    outValue.set(variety)
+    context.write(outKey, outValue)
+    context.getCounter("LAB3_DATA", "QUALIFYING_STYLES").increment(1L)
   }
 }
 
 object VarietyJob {
-  def configure(configuration: Configuration, input: Path, output: Path, reducers: Int): Job = {
-    val job = Job.getInstance(configuration, "lab3-task12-style-variety")
+  def configure(
+    configuration: Configuration,
+    input: Path,
+    output: Path,
+    reducers: Int,
+    qualifyingStyles: Set[String]
+  ): Job = {
+    val jobConfiguration = new Configuration(configuration)
+    GlobalStyleJob.putStyles(jobConfiguration, qualifyingStyles)
+    val job = Job.getInstance(jobConfiguration, "lab3-task12-style-variety")
     job.setJarByClass(classOf[VarietyMapper])
     job.setMapperClass(classOf[VarietyMapper])
     job.setReducerClass(classOf[VarietyReducer])

@@ -15,7 +15,7 @@ object Normalization {
     normalizeDimension(value).contains(expected.toUpperCase(Locale.ROOT))
 
   def isBought(status: String, qty: Long): Boolean =
-    qty != 0L && normalizeDimension(status).exists(_.contains("SHIPPED"))
+    qty > 0L && normalizeDimension(status).exists(_.contains("SHIPPED"))
 
   def isAtLeastXXL(size: String): Boolean =
     normalizeDimension(size)

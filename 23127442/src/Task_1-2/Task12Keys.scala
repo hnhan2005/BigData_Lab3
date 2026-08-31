@@ -20,12 +20,4 @@ object Task12Keys {
     (parts(0), parts(1))
   }
 
-  def skuAndSize(sku: String, atLeastXXL: Boolean): String =
-    sku + Separator + (if (atLeastXXL) "1" else "0")
-
-  def parseSkuAndSize(raw: String): (String, Boolean) = {
-    val parts = raw.split(Separator, -1)
-    require(parts.length == 2, "Invalid SKU/size value")
-    (parts(0), parts(1) == "1")
-  }
 }

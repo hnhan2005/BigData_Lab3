@@ -25,10 +25,18 @@ object PlanEvidence {
   def executedPlan(dataFrame: DataFrame): String = dataFrame.queryExecution.executedPlan.toString()
 
   def countExchangeNodes(executedPlan: String): Int =
-    Option(executedPlan).toSeq.flatMap(_.lines).count { line =>
-      line.replaceFirst("^[|:+\\- ]+", "").startsWith("Exchange ")
-    }
+    countNodes(executedPlan, "Exchange ")
+
+  def countSortNodes(executedPlan: String): Int = countNodes(executedPlan, "Sort ")
 
   def joinStrategies(executedPlan: String): Seq[String] =
     JoinNames.filter(name => Option(executedPlan).exists(_.contains(name)))
+
+  private def countNodes(executedPlan: String, nodePrefix: String): Int =
+    Option(executedPlan).toSeq.flatMap(_.lines).count { line =>
+      line
+        .replaceFirst("^[|:+\\- ]+", "")
+        .replaceFirst("^\\*\\([0-9]+\\) ", "")
+        .startsWith(nodePrefix)
+    }
 }

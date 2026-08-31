@@ -3,6 +3,10 @@
 > **Reference**: [Detailed Goals](./spec-bigdata-lab3-detailed-goal.md)
 >
 > **Next**: Implementation Checklist — chỉ tạo sau khi tài liệu này được xác nhận
+>
+> **Rules thực thi**: [rules.md](./rules.md)
+
+> **Source update 2026-08-31**: Các semantics và số liệu kiểm chứng trong thiết kế này phải đối chiếu với [`Lab3_Slide_ref.pdf`](../../../../Lab3_Slide_ref.pdf). Những quyết định nghiệp vụ đã chốt được ghi tại Sec 10; không tự thay đổi trong code.
 
 ## 1. Overview
 Revision note 2026-08-12: the final submission contract now flattens task source roots to `src/Task_*`, omits a top-level `scripts/` directory, and expects `docs/README.md` to carry the WSL-friendly terminal runbook with `<user_name>` placeholders.
@@ -25,7 +29,7 @@ Lời giải là một project Scala/SBT thống nhất gồm bốn command-line
 
 - SBT layout và version contract cho Scala/Hadoop/Spark.
 - CSV parser/schema/normalization và data-quality counters.
-- Ba-stage MapReduce pipeline cho Task 1-1 và hai-stage pipeline cho Task 1-2.
+- Ba-stage MapReduce pipeline cho Task 1-1 và pipeline gồm Job A1 (qualifying style toàn cục), Job A2 (variety) và Job B (median) cho Task 1-2.
 - Hai Spark DataFrame/Dataset pipelines, plan/stage capture và benchmark harness.
 - Exact output schemas, single-file export, validation và submission layout.
 - Unit, local integration và pseudo-distributed end-to-end tests.
@@ -233,7 +237,7 @@ object SaleRowParser {
   - ngày parse strict `MM-dd-yy`; month output `yyyy-MM`.
   - dimension trim, collapse whitespace, uppercase bằng `Locale.ROOT`.
   - promotions split theo comma sau CSV parsing, trim, bỏ empty, `distinct` trong một row; promotion Amazon không bị loại.
-  - `isBought`: normalized `Status` chứa `SHIPPED` và `Qty != 0`.
+  - `isBought`: normalized `Status` chứa `SHIPPED` và `Qty > 0`.
   - `isAtLeastXXL`: `XXL`, `2XL`, `XXXL`, `3XL`, `4XL`, `5XL`, `6XL` và pattern `NXL` với `N >= 2`; `Free`/không nhận diện là false.
 - **Dependencies**: Commons CSV cho MR; Spark built-in CSV/split/trim cho Structured APIs.
 - **Lifecycle**: stateless.
@@ -254,9 +258,9 @@ object Task11Driver {
 - **Job A**: bought rows → `(state, 1)`; sum combiner/reducer → total bought count/state.
 - **Window map**: `count > 10000 ? 5 : 10`; state map được driver đọc và đưa qua distributed cache/config nhỏ.
 - **Job B mapper**: bought row ngày `t` phát chính xác `w` khóa `(state, t+i, size)`, `i=1..w`. Vì vậy output date range có thể tới `maxDate + w`; đây là cách hiểu trực tiếp của map-to-buckets và giải thích “unseen timestamps”.
-- **Job B combiner/reducer**: combine `Moment`. Frequency là `count` của rows; Amount null vẫn tính frequency nhưng không vào moments. `amountCount=0` → variance chưa xác định và xếp sau mọi variance hữu hạn khi tie; `amountCount=1` → variance 0. Sai số âm rất nhỏ do floating point được clamp về 0.
+  - **Job B combiner/reducer**: combine `Moment`. Frequency là count của bought rows; `Amount=NULL` vẫn tính frequency nhưng không vào moments. `amountCount=0` → variance chưa xác định và xếp sau mọi variance hữu hạn khi tie; `amountCount=1` → variance 0. Sai số âm rất nhỏ do floating point được clamp về 0.
 - **Job C**: group `(state, windowDate)`; chọn max frequency, min variance (undefined = +∞), min lexicographical size.
-- **Parallelism**: Job A/B có reducer count configurable; Job C dùng 1 reducer cho dataset lab để tạo một part file, nhưng exporter vẫn chịu trách nhiệm header và exact filename.
+- **Parallelism**: Job A/B của Task 1-1 có reducer count configurable; Job C dùng 1 reducer cho dataset lab để tạo một part file, nhưng exporter vẫn chịu trách nhiệm header và exact filename. Task 1-2 dùng A1→A2→B theo Decision 4.
 
 ### 5.3 Task 1-2 MapReduce pipeline
 
@@ -270,8 +274,9 @@ object Median {
 }
 ```
 
-- Chỉ dùng bought rows vì truy vấn định nghĩa variety của goods “purchased” và đề vừa định nghĩa bought semantics.
-- **Job A**: key `(state, month, style)`, value `(sku, isAtLeastXXL)`; reducer tạo distinct SKU set và OR flag; chỉ style có flag true mới emit `(state, month) -> variety`.
+- Chỉ dùng bought rows vì truy vấn định nghĩa variety của goods “purchased” và đề vừa định nghĩa bought semantics (`Status` chứa `shipped` và `Qty > 0`).
+- **Job A1**: key `style`, tính `max(sizeRank)` trên toàn dataset; chỉ style có rank `>= XXL` mới được đưa vào tập qualifying toàn cục. Đây là quyết định khớp file đáp án của giảng viên.
+- **Job A2**: key `(state, month, style, sku)`, loại SKU trùng, sau đó tính variety theo `(state,month,style)` và join/filter với tập qualifying style từ Job A1 (phát tập style nhỏ qua Distributed Cache/config). Không dùng scope cục bộ theo state-tháng cho kết quả chính.
 - **Job B**: reducer thu variety cho `(state,month)`, sort tăng dần và tính exact median; odd lấy giữa, even lấy mean hai giữa bằng Double.
 - Không emit group không có qualifying style. Một reducer ở Job B bảo đảm single part cho lab; thiết kế vẫn đúng với nhiều reducer nếu exporter merge, nhưng ordering không phải semantics.
 
@@ -285,12 +290,12 @@ object Task21Job {
 ```
 
 1. Đọc explicit schema; tạo normalized columns và `record_id`.
-2. Explode distinct promotion tokens, group promotion ID để lấy `min(date)`, `max(date)`, `datediff >= 2`.
+2. Explode distinct promotion tokens, group promotion ID để lấy `min(date)`, `max(date)`, `datediff >= 2`; full-data baseline là 284 mã, 185 mã hợp lệ.
 3. Join valid promotions về record, count distinct identifiers per row; missing → 0.
 4. State average: rows có exact normalized `FULFILMENT=MERCHANT`, `COURIER STATUS=SHIPPED`, Amount non-null; `avg(amount)` theo state.
-5. Denominator: mọi row `STATUS=CANCELLED` và `SERVICE LEVEL=STANDARD` có city/state hợp lệ, kể cả Amount null.
+5. Denominator: mọi row có `STATUS` chứa `CANCELLED` và `SERVICE LEVEL=STANDARD` có city/state hợp lệ, kể cả Amount null; slide baseline là 6.909 rows, còn CSV hiện tại tái lập được 6.906 rows.
 6. Numerator: denominator rows có valid promo count ≥3, Amount non-null và Amount < state average.
-7. Group bằng `(state, city)` để tránh trộn hai city trùng tên khác state; percentage = `100.0 * numerator / denominator`.
+7. Group bằng `(state, city)` để tránh trộn hai city trùng tên khác state; percentage = `100.0 * numerator / denominator`. CSV hiện tại cho 1.442 groups và 0% ở mọi group, so với slide baseline 1.435 city.
 8. Không emit city có denominator 0 vì denominator được tạo từ base. City không có state average có numerator 0.
 
 ### 5.5 Task 2-2 Spark pipeline
@@ -305,6 +310,7 @@ object Task22Job {
 ```
 
 - Grain là một valid CSV row; group key `(sku, month)`; promotion count là số distinct token trong row.
+- Empty `promotion-ids` maps to count 0; Amazon promotions remain included. Full-data baseline is 16.486 SKU-month groups and counts range from 0 to 26.
 - Percentile population gồm mọi row có valid date và SKU, kể cả Amount null.
 - **Approx**: `groupBy("sku","month").agg(expr("percentile_approx(promotion_count, array(0.8, 0.9), 10000)"))`, sau đó explode thành P80/P90. Đây là Column expression trong DataFrame API, không phải `spark.sql` query.
 - **Exact**: Window partition `(sku,month)`, order `promotion_count ASC, record_id ASC`; `N=count(*)`, rank `ceil(p*N)` theo nearest-rank cho p=0.8/0.9; threshold là promotion count tại rank.
@@ -312,6 +318,7 @@ object Task22Job {
 - `qualifying_order_count` đếm mọi qualifying rows; `amount_value_count` đếm Amount non-null. Nếu qualifying count <2 hoặc không có Amount hợp lệ thì `amount_stddev_pop=0`; ngược lại dùng `stddev_pop` trên valid Amount (Spark bỏ null).
 - Output chứa cả `approx` và `exact`; comparison evidence chứa threshold difference và symmetric-difference record IDs, không đưa danh sách lớn vào final Parquet.
 - Profiling group size chạy trước; dữ liệu hiện tại có max 426 nên evidence/report ghi “không có group >1.000”, không manual repartition riêng group.
+- Evidence SHALL record the largest group as 426 rows/approximately 222 KB; this is far below 128 MB. The report may recommend reducing the default 200 shuffle partitions to 8–16 or enabling AQE coalesce, but SHALL not claim manual group repartition is beneficial without a benchmark.
 
 ### 5.6 Plan và stage evidence
 
@@ -618,17 +625,18 @@ Validation: required option/path absent, `runs < 5`, `accuracy <= 0`, existing w
 **Rationale**: đúng interval `[d-w,d-1]` và map-to-buckets; không cần calendar join.
 **Implications**: output có thể tới max date + 10; README/Report nêu rõ.
 
-### Decision 4: Task 1-2 chỉ dùng bought rows và exact median chuẩn
+### Decision 4: Task 1-2 dùng bought rows và qualifying style toàn cục
 
 **Context**: đề gọi variety của goods purchased nhưng không lặp predicate.
 
 **Options Considered**:
 1. Mọi rows — literal nếu xem predicate chỉ thuộc bài 1.
 2. Bought rows — nhất quán semantics purchased trong cùng section.
+3. Với điều kiện XXL: scope cục bộ `(state,month)` hoặc scope toàn cục trên mọi nơi xuất hiện của style.
 
-**Decision**: bought rows; median even là mean hai giữa.
-**Rationale**: cancelled/Qty 0 không phải hàng đã mua.
-**Implications**: assumption phải nổi bật trong Report; đổi được nếu giảng viên clarification khác.
+**Decision**: dùng bought rows; style qualifying nếu từng có size `>= XXL` ở bất kỳ state/tháng nào; median even là mean hai giữa.
+**Rationale**: cancelled/Qty 0 không phải hàng đã mua; scope toàn cục khớp file đáp án giảng viên. Slide ghi nhận hai scope lệch 40/128 nhóm (31%), nên Report phải nêu cả cách cục bộ để audit.
+**Implications**: Job A1 phải tính tập qualifying style toàn cục trước Job A2; không âm thầm đổi scope trong implementation.
 
 ### Decision 5: Denominator Task 2-1
 
@@ -764,7 +772,7 @@ Không có database hoặc PostgreSQL. Persistence verification áp dụng cho f
 |---|---|---|---|
 | D1 | Spark version adaptation | User chưa cung cấp actual `spark-submit --version` | Preflight trước checklist/code; design drift nếu khác 2.4.8 |
 | D2 | RepresentativeID/Drive URL/deadline | External values chưa có | Trước final packaging |
-| D3 | Instructor clarification cho ambiguous semantics | Không có kênh clarification trong workspace | Update Goals + Design trước code nếu nhận câu trả lời |
+| D3 | User confirmation cho revision semantics | Các lựa chọn nghiệp vụ đã được chốt theo slide nhưng phase gate vẫn cần xác nhận | Confirm Goals → Design → Checklist trước code |
 | D4 | Multi-node tuning | Không cần cho môi trường lab | Spec tương lai nếu data/cluster tăng |
 
 ## 14. Quality Checklist
@@ -798,7 +806,7 @@ Không có database hoặc PostgreSQL. Persistence verification áp dụng cho f
 
 - [x] Matrix phủ R-GEN, R-MR, R-SP và R-SUB.
 - [x] Không có design component ngoài mục tiêu spec.
-- [x] Approval Gate được đổi sang `Approved` sau xác nhận rõ của người dùng.
+- [x] Revision 2026-08-31 được người dùng xác nhận qua Approval Gate trước code execution.
 
 ## 15. Approval Gate
 
@@ -811,3 +819,5 @@ Không có database hoặc PostgreSQL. Persistence verification áp dụng cho f
 - **Notes / required revisions before implementation planning**:
   - Người dùng trả lời “approved”.
   - Actual `spark-submit --version` vẫn chưa được cung cấp; checklist đặt preflight compatibility gate là task đầu tiên. Nếu khác baseline Spark 2.4.8/Scala 2.11.12, phải cập nhật Design trước khi viết Spark source.
+  - Revision 2026-08-31 đã cập nhật semantics theo slide; cần người dùng xác nhận revision gate trước khi tiếp tục code hoặc đánh dấu lại các task bị ảnh hưởng.
+  - Người dùng xác nhận revision cho code execution ngày 2026-08-31.

@@ -25,10 +25,19 @@ object Task12Driver {
       if (!fileSystem.delete(work, true)) throw new IllegalStateException("Không xóa được work path: " + work)
     }
 
+    val globalStylePath = new Path(work, "global-qualifying-styles")
     val varietyPath = new Path(work, "style-variety")
     val medianPath = new Path(work, "state-month-median")
 
-    val varietyJob = VarietyJob.configure(configuration, input, varietyPath, reducers)
+    val globalStyleJob = GlobalStyleJob.configure(configuration, input, globalStylePath, reducers)
+    if (!globalStyleJob.waitForCompletion(true)) return 1
+
+    val qualifyingStyles = GlobalStyleJob.readStyles(configuration, globalStylePath)
+    if (qualifyingStyles.isEmpty) {
+      throw new IllegalStateException("Không tìm thấy style có size từ XXL trở lên trên toàn bộ dữ liệu")
+    }
+
+    val varietyJob = VarietyJob.configure(configuration, input, varietyPath, reducers, qualifyingStyles)
     if (!varietyJob.waitForCompletion(true)) return 1
 
     val medianJob = MedianJob.configure(configuration, varietyPath, medianPath)

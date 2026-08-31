@@ -1,0 +1,7 @@
+java=Temurin 1.8.0_502
+sbt=1.5.8
+scala=2.11.12
+hadoop_compile_api=3.3.6
+spark_compile_api=2.4.8
+execution_mode=independent-python-oracle
+hadoop_spark_local_blocker=winutils.exe unavailable; WSL and Docker unavailable

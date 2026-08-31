@@ -26,11 +26,11 @@ object Task21Main {
               val result = Task21Job.build(spark, options.value("input").get)
               val evidenceDirectory = Paths.get(options.value("evidence-dir").get)
               Files.createDirectories(evidenceDirectory)
-              val group = "lab3-task21"
-              val collector = new StageCollector(group)
-              spark.sparkContext.addSparkListener(collector)
+              val defaultGroup = "lab3-task21-default"
+              val defaultCollector = new StageCollector(defaultGroup)
+              spark.sparkContext.addSparkListener(defaultCollector)
               PlanEvidence.writeExtendedPlan(result, evidenceDirectory.resolve("extended-plan.txt"))
-              spark.sparkContext.setJobGroup(group, "Task 2-1 final Parquet action")
+              spark.sparkContext.setJobGroup(defaultGroup, "Task 2-1 final Parquet action")
               try {
                 SingleFileExporter.exportParquet(
                   result,
@@ -39,16 +39,43 @@ object Task21Main {
                 )
               } finally spark.sparkContext.clearJobGroup()
 
-              val physical = PlanEvidence.executedPlan(result)
+              val defaultPhysical = PlanEvidence.executedPlan(result)
+              val originalBroadcastThreshold = spark.conf.get("spark.sql.autoBroadcastJoinThreshold")
+              spark.conf.set("spark.sql.autoBroadcastJoinThreshold", -1L)
+              val noBroadcastResult = Task21Job.build(spark, options.value("input").get)
+              val noBroadcastGroup = "lab3-task21-no-broadcast"
+              val noBroadcastCollector = new StageCollector(noBroadcastGroup)
+              spark.sparkContext.addSparkListener(noBroadcastCollector)
+              PlanEvidence.writeExtendedPlan(
+                noBroadcastResult,
+                evidenceDirectory.resolve("extended-plan-no-broadcast.txt")
+              )
+              spark.sparkContext.setJobGroup(noBroadcastGroup, "Task 2-1 no-broadcast evidence action")
+              try noBroadcastResult.foreachPartition(_ => ())
+              finally {
+                spark.sparkContext.clearJobGroup()
+                spark.conf.set("spark.sql.autoBroadcastJoinThreshold", originalBroadcastThreshold)
+              }
+              val noBroadcastPhysical = PlanEvidence.executedPlan(noBroadcastResult)
+
               val deadline = System.currentTimeMillis() + 5000L
-              while (collector.stageIds.isEmpty && System.currentTimeMillis() < deadline) Thread.sleep(25L)
+              while (
+                (defaultCollector.stageIds.isEmpty || noBroadcastCollector.stageIds.isEmpty) &&
+                  System.currentTimeMillis() < deadline
+              ) Thread.sleep(25L)
               val summary = Seq(
-                "job_group=" + group,
                 "master=" + spark.sparkContext.master,
                 "spark_version=" + spark.version,
-                "join_strategies=" + PlanEvidence.joinStrategies(physical).mkString(","),
-                "exchange_count=" + PlanEvidence.countExchangeNodes(physical),
-                "stage_ids=" + collector.stageIds.toSeq.sorted.mkString(",")
+                "default_job_group=" + defaultGroup,
+                "default_join_strategies=" + PlanEvidence.joinStrategies(defaultPhysical).mkString(","),
+                "default_exchange_count=" + PlanEvidence.countExchangeNodes(defaultPhysical),
+                "default_sort_count=" + PlanEvidence.countSortNodes(defaultPhysical),
+                "default_stage_ids=" + defaultCollector.stageIds.toSeq.sorted.mkString(","),
+                "no_broadcast_job_group=" + noBroadcastGroup,
+                "no_broadcast_join_strategies=" + PlanEvidence.joinStrategies(noBroadcastPhysical).mkString(","),
+                "no_broadcast_exchange_count=" + PlanEvidence.countExchangeNodes(noBroadcastPhysical),
+                "no_broadcast_sort_count=" + PlanEvidence.countSortNodes(noBroadcastPhysical),
+                "no_broadcast_stage_ids=" + noBroadcastCollector.stageIds.toSeq.sorted.mkString(",")
               ).mkString("\n") + "\n"
               Files.write(evidenceDirectory.resolve("execution-summary.txt"), summary.getBytes(StandardCharsets.UTF_8))
               0

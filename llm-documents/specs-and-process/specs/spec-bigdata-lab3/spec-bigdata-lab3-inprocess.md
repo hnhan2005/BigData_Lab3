@@ -1,13 +1,15 @@
 # Spec Big Data Lab 3 — Advanced MapReduce & Spark Structured APIs
 
-> **Nguồn yêu cầu**: [`Lab 3 - MR-Spark.pdf`](../../../../Lab%203%20-%20MR-Spark.pdf)
+> **Nguồn yêu cầu**: [`Lab3_Slide_ref.pdf`](../../../../Lab3_Slide_ref.pdf)
 >
 > **Tài liệu liên quan**:
 > - [Detailed Goals](./spec-bigdata-lab3-detailed-goal.md)
 > - [Detailed Design](./spec-bigdata-lab3-detailed-design.md)
 > - [Implementation Checklist](./spec-bigdata-lab3-implementation-checklist.md)
+> - [Rules & Ambiguity Decisions](./rules.md)
 
 ## Spec Goal
+Revision note 2026-08-31: synced requirements and ambiguity decisions from `Lab3_Slide_ref.pdf`. The authoritative choices are recorded in Detailed Goals Sec 10 and Detailed Design Sec 10; the implementation checklist now has a revision gate. No production code was changed by this documentation update.
 Scope update 2026-08-12: final submission no longer requires a top-level `scripts/` directory, task source roots are flattened to `src/Task_*`, and `docs/README.md` must be a WSL-friendly runbook that uses placeholders such as `<user_name>` and documents the full install -> config -> build -> run -> validate -> package order. Any scripts, source path literals, and CLI examples that depend on the old tree must be updated together with the layout change.
 
 Xây dựng một bài nộp nhóm thống nhất, chạy được bằng Scala trên môi trường Hadoop/Spark cục bộ đã cài từ Lab 1, giải đúng bốn bài toán trong đề bằng MapReduce và Spark Structured APIs, xuất đúng bốn tệp kết quả trên filesystem thông thường, đồng thời cung cấp báo cáo phân tích và README tiếng Việt đủ để chạy lại từng bước từ terminal.
@@ -37,7 +39,7 @@ Xây dựng một bài nộp nhóm thống nhất, chạy được bằng Scala 
   - Chỉ dùng môi trường cài từ Lab 1; không dùng Google Colab
 - **Dữ liệu đầu vào được cung cấp**:
   - `Amazon Sale Report.csv` — 68,923,428 byte, 128,976 dòng tính cả header
-  - `shapes.parquet(legacy)` — tệp tham chiếu/legacy cần xác định vai trò ở phase Design
+  - `shapes.parquet(legacy)` — artefact ngoài PDF, không dùng trong pipeline hoặc submission
 - **Testing**:
   - Kiểm thử logic bằng các fixture nhỏ có kết quả tính tay cho cả bốn bài.
   - Chạy end-to-end trên toàn bộ CSV được cung cấp trong môi trường mục tiêu.
@@ -45,7 +47,7 @@ Xây dựng một bài nộp nhóm thống nhất, chạy được bằng Scala 
   - Mọi benchmark phải chạy ít nhất 5 lần và báo cáo mean cùng standard deviation.
 - **Rủi ro**:
   - **Thiếu thông tin Spark**: Chưa biết phiên bản/cách cài Spark tương thích với Scala 2.11.12 và Java 8.
-  - **Một số cách hiểu chưa được đề định nghĩa tuyệt đối**: Mẫu số của tỷ lệ, quy ước exact percentile, phạm vi ngày phát sinh của sliding window và một số điều kiện lọc cần được xác nhận hoặc nêu giả định minh bạch trong báo cáo.
+  - **Semantics cần giữ nhất quán**: các điểm mập mờ đã được chốt trong Goals/Design theo slide; vẫn phải đưa quyết định và bằng chứng vào Report.
   - **“Single file” trên output phân tán**: MapReduce/Spark thường ghi thư mục gồm part files; thiết kế phải tạo đúng một tệp vật lý trên filesystem thường với filename bắt buộc.
   - **Dữ liệu CSV có null và chuỗi promotion dài**: Parser, schema, chuẩn hóa ngày/size và xử lý null phải được xác định rõ ở Design.
 - **Cam kết**:
@@ -61,6 +63,8 @@ Xây dựng một bài nộp nhóm thống nhất, chạy được bằng Scala 
 - **Detailed Design**: Approved — scope update ngày 2026-08-12 (bỏ `scripts/`, rút gọn task source roots, WSL README)
 - **Implementation Checklist**: Approved — scope update ngày 2026-08-12 (bỏ `scripts/`, rút gọn task source roots, WSL README)
 
+> **Revision 2026-08-31**: Goals, Design và Checklist đã cập nhật theo `Lab3_Slide_ref.pdf`; người dùng đã xác nhận revision cho Code Execution.
+
 ## During Spec
 
 - **Standups**: Chưa bắt đầu thực thi.
@@ -73,6 +77,8 @@ Xây dựng một bài nộp nhóm thống nhất, chạy được bằng Scala 
   - 2026-08-10: Detailed Design được người dùng phê duyệt; spec chuyển sang phase Implementation Checklist.
   - 2026-08-10: Implementation Checklist được người dùng phê duyệt; spec chuyển sang Code Execution.
   - 2026-08-12: Người dùng yêu cầu bỏ `scripts/`, rút gọn task source roots và chuẩn hóa README cho WSL/<user_name>; các tài liệu goals/design/checklist phải được duyệt lại sau khi cập nhật.
+  - 2026-08-31: Người dùng yêu cầu đồng bộ toàn bộ requirement, lưu ý và điểm mập mờ theo `Lab3_Slide_ref.pdf`; đã chốt semantics Amount, global XXL, Cancelled+Standard/LEFT JOIN, nearest-rank và repartition trong Goals/Design, chưa sửa production code.
+  - 2026-08-31: Người dùng xác nhận triển khai revision, tạo môi trường chạy tách biệt, chạy đủ bốn task và đối chiếu với slide.
 
 ## Spec Review
 

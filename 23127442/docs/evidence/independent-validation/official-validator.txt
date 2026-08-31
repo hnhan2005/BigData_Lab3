@@ -1,0 +1,5 @@
+Command: lab3.io.ValidationMain --output-dir 23127442/outputs
+Runtime: Temurin Java 1.8.0_502, Scala 2.11.12, Spark 2.4.8 local[2]
+Result: PASS
+Output: [OK] Bốn output đã qua schema, key và invariant validation
+Completed: 2026-08-31

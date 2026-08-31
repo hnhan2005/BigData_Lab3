@@ -23,7 +23,7 @@ object Task21Job {
 
   def buildFromBase(base: DataFrame): DataFrame = {
     val denominator = base.filter(
-      col("status") === lit("CANCELLED") &&
+      col("status").contains("CANCELLED") &&
         col("service_level") === lit("STANDARD") &&
         col("state").isNotNull &&
         col("city").isNotNull

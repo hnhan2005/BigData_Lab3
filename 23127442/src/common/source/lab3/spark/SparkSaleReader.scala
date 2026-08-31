@@ -62,7 +62,7 @@ object SparkSaleReader {
       normalized(col("ship-state")).as("state"),
       col("promotion-ids").as("promotion_ids_raw")
     ).withColumn("month", date_format(col("order_date"), "yyyy-MM"))
-      .withColumn("is_bought", col("qty") =!= lit(0L) && col("status").contains("SHIPPED"))
+      .withColumn("is_bought", col("qty") > lit(0L) && col("status").contains("SHIPPED"))
   }
 
   private def clean(value: Column): Column = {

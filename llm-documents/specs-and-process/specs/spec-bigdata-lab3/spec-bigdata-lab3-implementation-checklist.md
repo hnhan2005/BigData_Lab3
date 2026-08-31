@@ -4,6 +4,7 @@
 > - [Detailed Goals](./spec-bigdata-lab3-detailed-goal.md)
 > - [Detailed Design](./spec-bigdata-lab3-detailed-design.md)
 > - [Main Spec](./spec-bigdata-lab3-inprocess.md)
+> - [Rules & Ambiguity Decisions](./rules.md)
 
 ## Context
 Revision note 2026-08-12: the revised submission target removes the top-level `scripts/` directory, flattens task source roots to `src/Task_*` direct roots, and treats `docs/README.md` as the authoritative WSL-friendly runbook with `<user_name>` placeholders.
@@ -17,11 +18,23 @@ Không có database/PostgreSQL trong spec. Persistence verification áp dụng c
 
 > Không viết production code, README, report source hoặc scripts cho đến khi section này được người dùng xác nhận rõ.
 
-- **Status**: Approved
+- **Status**: Approved — revision 2026-08-31 confirmed by user
 - **Confirmed by**: Người dùng
 - **Confirmation date**: 2026-08-10
 - **Revision note (2026-08-12)**: Scope changed to require WSL-friendly README commands, flattened task source roots, and no top-level `scripts/` directory.
 - **Notes / required revisions before code execution**: Người dùng trả lời “approved”. Actual environment vẫn phải qua Phase 0 compatibility gate.
+
+### Spec revision gate — 2026-08-31
+
+Revision này cập nhật theo `Lab3_Slide_ref.pdf`. Các task đã từng đánh dấu complete chỉ được coi là hợp lệ lại sau khi đối chiếu các semantics mới; không viết/chạy production code cho phần drift trước khi người dùng xác nhận revision.
+
+- [x] Shared parser dùng đúng `Status contains shipped AND Qty > 0`.
+- [x] Task 1-1 dùng `Amount` cho variance, giữ frequency của bought rows, cửa sổ `[d-L,d-1]`, và sinh ngày tới `maxDate+10`.
+- [x] Task 1-2 tính qualifying style theo scope toàn cục, có Job A1/A2/B; evidence nêu thêm chênh lệch với scope trong nhóm.
+- [x] Task 2-1 dùng `Status contains Cancelled + Standard`, `LEFT JOIN`, giữ Amazon promotions, và có bằng chứng 0%/các cách hiểu cancelled.
+- [x] Task 2-2 dùng nearest-rank exact, `stddev_pop`, null policy `coalesce` về 0.0 khi không đủ Amount, và evidence percentile/repartition theo slide.
+- [/] Full-data evidence đối chiếu các mốc: Task 1-1 khớp 3.696; Task 1-2 global=143/local=128; Task 2-1 khớp 0% nhưng CSV hiện tại là 1.442 groups thay vì slide 1.435; Task 2-2 khớp 16.486 groups. Shuffle/plan target-runtime vẫn cần Lab 1.
+- [x] Người dùng xác nhận revision Goals → Design → Checklist trước khi tiếp tục code hoặc cập nhật trạng thái hoàn tất.
 
 ## Sequencing Strategy
 
@@ -194,7 +207,7 @@ flowchart LR
   - Comparator: frequency desc → finite variance asc → lexicographical size asc.
   - _Requirements: R-MR-11-03_ — _Design: Sec 5.2, 6.2_
 - [x] 2.2 Implement Job A state bought counts
-  - Mapper/combiner/reducer với counters cho rows/bought/rejected; output state→total.
+  - Mapper/combiner/reducer với counters cho rows/bought/rejected; bought đúng `Status contains shipped AND Qty > 0`; output state→total.
   - Driver đọc small result và xác định 5 ngày khi `>10000`, còn lại 10.
   - _Requirements: R-MR-11-01_ — _Design: Sec 5.2_
 - [x] 2.3 Implement Job B map-to-buckets và local combine
@@ -210,7 +223,7 @@ flowchart LR
   - Log Hadoop counters cần cho shuffle/time complexity report.
   - _Requirements: R-MR-11-02, R-MR-11-04_ — _Design: Sec 5.2, 7.2, 8.3, 9.1_
 - [x] 2.6 Unit test boundaries, buckets và tie-breaks
-  - Exactly 10.000/10.001, `[d-w,d-1]`, max-date+window, frequency ties, lower/undefined/one-value variance và lexical tie.
+  - Exactly 10.000/10.001, `Qty=0` rejected, `[d-w,d-1]`, max-date+window, frequency ties, lower/undefined/one-value variance và lexical tie.
   - _Requirements: R-MR-11-01/02/03_ — _Design: Sec 11.2_
 - [!] 2.7 Run Hadoop local-mode integration fixture — blocked trong workspace Windows vì Hadoop 3.3.6 gọi native Windows API; test được giữ để chạy thật trên Linux/Lab 1 và tự `cancel` có lý do trên Windows.
   - Chạy ba jobs trên tiny CSV, assert exact rows/schema/logical keys/counters; test job failure không commit final.
@@ -246,20 +259,20 @@ flowchart LR
   - Odd/even behavior, Double output, empty input typed error/not emitted.
   - _Requirements: R-MR-12-02_ — _Design: Sec 5.3_
 - [x] 3.2 Implement Job A variety per style
-  - Bought filter; key `(state,month,style)`; reducer distinct SKU + OR `isAtLeastXXL`; emit only qualifying styles.
-  - Add counters for missing fields/non-bought/qualifying styles.
+  - Bought filter; Job A1 tính qualifying style toàn cục theo `max(sizeRank)`, Job A2 dùng key `(state,month,style,sku)` để distinct SKU và tính variety theo nhóm.
+  - Add counters for missing fields/non-bought/qualifying styles; không dùng scope XXL cục bộ làm kết quả chính.
   - _Requirements: R-MR-12-01_ — _Design: Sec 4.3, 5.3, Decision 4_
 - [x] 3.3 Implement Job B state-month median
   - Group `(state,month)`, exact sort/median, qualifying style count và deterministic output.
   - _Requirements: R-MR-12-02, R-MR-12-03_ — _Design: Sec 5.3, 6.3_
 - [x] 3.4 Implement `Task12Main` orchestration
-  - CLI/work/output policies; Job A→B gating; temp cleanup; counters/evidence.
+  - CLI/work/output policies; Job A1→A2→B gating; temp cleanup; counters/evidence.
   - _Requirements: R-MR-12-03_ — _Design: Sec 7.3, 8.1–8.3_
 - [x] 3.5 Unit test variety, size aliases và median
   - Duplicate SKU, same SKU across styles, XXL/2XL/XXXL/3–6XL/Free/unknown, month boundary, odd/even/empty.
   - _Requirements: R-MR-12-01/02_ — _Design: Sec 11.2_
 - [!] 3.6 Run Hadoop local-mode integration fixture — test chạy thật trên Linux/Lab 1 nhưng bị `cancel` có lý do trong workspace Windows thiếu native Hadoop.
-  - Assert exact `state,month,median_variety,qualifying_style_count`; verify cancelled/Qty0 excluded.
+  - Assert exact `state,month,median_variety,qualifying_style_count`; verify cancelled/Qty0 excluded và global XXL qualification.
   - _Requirements: R-MR-12-01 đến R-MR-12-03_ — _Design: Sec 11.1–11.3_
 
 **Acceptance Criteria**:
@@ -271,7 +284,7 @@ flowchart LR
 
 **Deliverables Created / Modified**:
 
-- `src/Task_1-2/source/lab3/task12/*` — two-job MR pipeline.
+- `src/Task_1-2/source/lab3/task12/*` — Job A1/A2/B MR pipeline.
 - `src/test/scala/lab3/task12/*` — unit/local integration tests.
 
 ---
@@ -635,7 +648,7 @@ flowchart LR
 |---|---|---|---|
 | D1 | Spark version adaptation | 2–8h tùy version | Actual `spark-submit --version`; update Design trước source |
 | D2 | Drive URL/deadline | External input | RepresentativeID đã chốt là `23127442`; người dùng cung cấp Drive URL trước Phase 8.7/9.4 |
-| D3 | Instructor clarification semantics | Variable | Chỉ cập nhật Goals→Design→Checklist khi có clarification |
+| D3 | User confirmation cho revision semantics | Các lựa chọn nghiệp vụ đã được chốt theo slide nhưng phase gate vẫn cần xác nhận | Confirm Goals → Design → Checklist trước code |
 | D4 | Multi-node production tuning | Ngoài spec | Dataset/cluster tương lai |
 
 Chi tiết: [Detailed Goals Sec 12](./spec-bigdata-lab3-detailed-goal.md) và [Detailed Design Sec 13](./spec-bigdata-lab3-detailed-design.md).
@@ -1022,6 +1035,20 @@ Chi tiết: [Detailed Goals Sec 12](./spec-bigdata-lab3-detailed-goal.md) và [D
   - Tests: The staged tree compiled and assembled successfully from 34 sources before generated `target` directories were removed; final audit found 42 files, 0 forbidden test/target/class/jar/unrelated artefacts, and 0 references to the removed test-only DataQuality utility.
   - Decisions: Preserved the development project unchanged. Created an empty required `docs/drive_link.txt` rather than fabricating a URL; ZIP creation is deferred until a real Drive URL and four validated outputs exist.
   - Blockers: `docs/drive_link.txt` must receive the real HTTPS Drive folder URL; Report/full-data evidence blockers remain unchanged.
+
+2026-08-31 — Spec revision from `Lab3_Slide_ref.pdf`
+  - Files: `spec-bigdata-lab3-detailed-goal.md`, `spec-bigdata-lab3-detailed-design.md`, `spec-bigdata-lab3-implementation-checklist.md`, `implementation-notes.md`
+  - Summary: Added slide-derived requirements, full-data baselines, ambiguity decisions, and a revision gate. Corrected the bought predicate to `Status contains shipped AND Qty > 0`; documented Amount variance, global XXL qualification, Cancelled+Standard/LEFT JOIN semantics, nearest-rank percentile, and repartition findings.
+  - Tests: Read-only document/diff audit only; no production code or runtime was changed.
+  - Decisions: Followed the instructor slide recommendation for Amount and the instructor answer-key behavior for global XXL qualification; retained all alternative interpretations in the Report requirements.
+  - Blockers: User confirmation is required before treating this revision as approved and before any code/status updates for the affected semantics.
+
+2026-08-31 — Created `rules.md`
+  - Files: `rules.md`, all four spec documents, `implementation-notes.md`
+  - Summary: Consolidated every selected interpretation, ambiguity, implementation direction and verification baseline by task; linked the rules file from the spec documents.
+  - Tests: Verified UTF-8, source link existence and `git diff --check`; no production code/runtime executed.
+  - Decisions: `rules.md` is the task-level decision reference; new instructor clarification must be propagated through Goals → Design → Checklist → Notes before code changes.
+  - Blockers: Revision remains pending user confirmation.
 
 Format:
 

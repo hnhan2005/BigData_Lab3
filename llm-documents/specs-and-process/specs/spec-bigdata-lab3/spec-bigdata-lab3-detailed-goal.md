@@ -2,7 +2,9 @@
 
 > **Reference**: [Main Spec File](./spec-bigdata-lab3-inprocess.md)
 >
-> **Nguồn yêu cầu gốc**: [`Lab 3 - MR-Spark.pdf`](../../../../Lab%203%20-%20MR-Spark.pdf)
+> **Nguồn yêu cầu gốc**: [`Lab3_Slide_ref.pdf`](../../../../Lab3_Slide_ref.pdf)
+>
+> **Rules thực thi**: [rules.md](./rules.md)
 
 ## Spec Goal
 Revision note 2026-08-12: this spec now also requires a WSL-friendly README with `<user_name>`/`$HOME` placeholders, a flattened task source layout under `src/Task_*`, and no top-level `scripts/` directory in the final submission.
@@ -10,6 +12,19 @@ Revision note 2026-08-12: this spec now also requires a WSL-friendly README with
 Tạo đầy đủ artefact có thể chấm và tái lập cho bốn bài toán Advanced MapReduce và Spark Structured APIs bằng Scala, tuân thủ chính xác điều kiện lọc/tổng hợp, thuật toán bắt buộc, định dạng output, nội dung báo cáo và cấu trúc nộp bài do giảng viên quy định.
 
 ## 1. Bối cảnh và giá trị
+
+### Cập nhật từ slide tham chiếu 2026-08-31
+
+Các số liệu dưới đây là baseline dùng để kiểm tra full-data và viết Report:
+
+- Input có 128.975 dòng dữ liệu, ngày từ 31/03/2022 đến 29/06/2022.
+- Sau chuẩn hóa `UPPER(TRIM(state))` có 46 state.
+- `Status` phải kiểm tra bằng điều kiện chứa `shipped`, không dùng phép bằng chuỗi `Shipped`.
+- Size phải được xếp theo rank nghiệp vụ: `XS=1, S=2, M=3, L=4, XL=5, XXL=6, 3XL=7, ...`; “ít nhất XXL” là `rank >= 6`.
+- CSV phải được parse đúng quote; `promotion-ids` có dấu phẩy bên trong.
+- `Qty` và `Amount` có null/giá trị biên; mọi phép so sánh hoặc aggregate phải có null policy tường minh.
+
+Các kết quả kiểm tra chính: Task 1-1 có 3.696 dòng và ngày cuối 09/07/2022; Task 1-2 output global đã chọn có 143 dòng (đối chiếu local có 128 dòng); Task 2-1 phải cho 0% ở mọi city khi giữ nguyên điều kiện đề.
 
 Spec biến đề bài PDF thành các yêu cầu quan sát và kiểm thử được trước khi chọn kiến trúc. Kết quả cuối không chỉ cần “chạy ra số”, mà còn phải chứng minh cách hiểu truy vấn, cách phân rã, lý do thiết kế, độ đúng của kết quả và khả năng chạy lại trên môi trường Lab 1.
 
@@ -78,13 +93,14 @@ Revision note 2026-08-12: README must target WSL, use `<user_name>`/`$HOME` plac
 
 #### Acceptance Criteria
 
-1. WHEN `Status` chứa từ “shipped” và `Qty` khác 0 THEN record/order SHALL được coi là “bought”; so khớp SHALL xử lý nhất quán khác biệt hoa/thường.
+1. WHEN `Status` chứa từ “shipped” và `Qty > 0` THEN record/order SHALL được coi là “bought”; không coi `Qty = 0` là bought và so khớp status SHALL xử lý nhất quán khác biệt hoa/thường.
 2. WHEN tính tổng bought orders theo state THEN phép tính SHALL dùng toàn bộ dataset, không chỉ phạm vi của một cửa sổ.
 3. IF một state có tổng bought orders lớn hơn 10,000 THEN độ dài cửa sổ của state đó SHALL là 5 ngày.
 4. IF một state có tổng bought orders nhỏ hơn hoặc bằng 10,000 THEN độ dài cửa sổ của state đó SHALL là 10 ngày.
 5. WHEN đánh giá ngày hiện tại `d` với cửa sổ 5 ngày THEN cửa sổ SHALL bao gồm `d-5` đến `d-1` và SHALL NOT bao gồm `d`.
 6. WHEN đánh giá ngày hiện tại `d` với cửa sổ 10 ngày THEN cửa sổ SHALL bao gồm `d-10` đến `d-1` và SHALL NOT bao gồm `d`.
 7. WHEN ở gần đầu miền ngày và không có đủ lịch sử THEN cửa sổ SHALL được phép ngắn hơn, không tạo dữ liệu mua giả để lấp ngày.
+8. WHEN kiểm tra full-data THEN chỉ `MAHARASHTRA` (19.103 bought orders) và `KARNATAKA` (14.950 bought orders) SHALL dùng cửa sổ 5 ngày; các state còn lại SHALL dùng 10 ngày.
 
 ### R-MR-11-02 — Map-to-buckets và bước trượt một ngày
 
@@ -108,7 +124,8 @@ Revision note 2026-08-12: README must target WSL, use `<user_name>`/`$HOME` plac
 2. WHEN từ hai size trở lên đồng hạng frequency cao nhất THEN hệ thống SHALL chọn size có population variance của purchased amount thấp nhất trong đúng cửa sổ đó.
 3. WHEN tính population variance THEN mẫu số SHALL là `N`, không phải `N-1`.
 4. IF frequency và variance vẫn hòa THEN hệ thống SHALL chọn size nhỏ nhất theo lexicographical order của chuỗi, ví dụ `L < M < S < XL < XXL` theo so sánh từ điển nêu trong đề.
-5. WHEN amount có null/không hợp lệ hoặc nhóm không đủ giá trị THEN chính sách xử lý SHALL được nêu rõ, kiểm thử và không được âm thầm thay đổi frequency.
+5. WHEN amount có null/không hợp lệ hoặc nhóm không đủ giá trị THEN chính sách xử lý SHALL được nêu rõ, kiểm thử và không được âm thầm thay đổi frequency; phương sai dùng `Amount` theo quyết định của spec.
+6. WHEN frequency, variance và lexical key đều được tính THEN tie-break SHALL dùng `>` thay vì `>=` khi secondary sort đã đưa size về thứ tự A-Z.
 
 ### R-MR-11-04 — Output và báo cáo Task 1-1
 
@@ -122,6 +139,8 @@ Revision note 2026-08-12: README must target WSL, use `<user_name>`/`$HOME` plac
 4. WHEN viết Report THEN phần Task 1-1 SHALL phân tích theoretical time complexity, bao gồm cách tiếp cận tránh/giảm chi phí naive `O(n × w)` nếu áp dụng được.
 5. WHEN viết Report THEN phần Task 1-1 SHALL phân tích shuffle complexity/lượng dữ liệu truyền giữa map và reduce.
 6. WHEN viết Report THEN phần Task 1-1 SHALL giải thích và biện minh thứ tự tie-breaking frequency → lower population variance → lexicographical smallest.
+7. WHEN kiểm tra full-data THEN output SHALL có 3.696 dòng, ngày lớn nhất `2022-07-09`, và size `M` SHALL thắng nhiều nhất (1.299 lần).
+8. WHEN phân tích hiệu năng THEN Report SHALL so sánh ba mức shuffle: naive 925.395 phiếu, mảng hiệu 219.132 phiếu và combiner 27.134 phiếu.
 
 ## 5. Task 1-2 — MapReduce state-level median variety
 
@@ -136,6 +155,7 @@ Revision note 2026-08-12: README must target WSL, use `<user_name>`/`$HOME` plac
 3. WHEN cùng SKU xuất hiện lặp lại cho cùng style/state/month THEN SKU đó SHALL chỉ đóng góp 1 vào variety.
 4. WHEN một style được xét cho median THEN style đó SHALL có phục vụ ít nhất một size thuộc ngưỡng “at least XXL”, gồm ví dụ `XXL`, `3XL`, `4XL`, v.v.
 5. WHEN chuẩn hóa size tương đương như `XXXL` và `3XL` hoặc gặp size không nhận diện được THEN quy tắc SHALL được định nghĩa minh bạch trong Design và có fixture kiểm thử.
+6. WHEN xác định style đạt ngưỡng XXL THEN scope SHALL là toàn cục: style đã từng bán size `>= XXL` ở bất kỳ state/tháng nào được coi là qualifying; Report SHALL đồng thời nêu cách hiểu trong từng `(state, month)` vì slide xác nhận hai cách lệch 40/128 nhóm (31%).
 
 ### R-MR-12-02 — Median cấp state
 
@@ -145,8 +165,9 @@ Revision note 2026-08-12: README must target WSL, use `<user_name>`/`$HOME` plac
 
 1. WHEN có các variety của mọi style đủ điều kiện trong `(state, month)` THEN hệ thống SHALL tính median trên toàn bộ tập giá trị đó.
 2. WHEN số style đủ điều kiện là lẻ THEN median SHALL là giá trị chính giữa sau khi sắp xếp.
-3. WHEN số style đủ điều kiện là chẵn THEN quy tắc median SHALL dùng trung bình của hai giá trị giữa, trừ khi giảng viên xác nhận quy ước khác trước Design.
+3. WHEN số style đủ điều kiện là chẵn THEN quy tắc median SHALL dùng trung bình số học của hai giá trị giữa, theo quy ước trên slide.
 4. WHEN không có style đủ điều kiện trong một `(state, month)` THEN chính sách có/không phát output SHALL được chốt và kiểm thử trước triển khai.
+5. WHEN kiểm tra full-data THEN output chính theo global+bought SHALL có 143 nhóm `(month,state)`; evidence local+bought SHALL có 128 nhóm. `MAHARASHTRA` tháng 04/2022 lần lượt là 863 style/median 3,0 và 621 style/median 4,0; mốc slide 647 style phải được ghi là không tái lập dưới bought predicate đã chọn.
 
 ### R-MR-12-03 — Output và báo cáo Task 1-2
 
@@ -173,6 +194,7 @@ Revision note 2026-08-12: README must target WSL, use `<user_name>`/`$HOME` plac
 4. IF active period lớn hơn hoặc bằng 2 ngày THEN promotion SHALL được coi là temporally valid.
 5. IF promotion trống/null THEN nó SHALL không được tính là một identifier.
 6. WHEN một order có identifier lặp do dữ liệu/parse THEN chính sách đếm SHALL không làm tăng sai số promotion duy nhất gắn với order và phải được kiểm thử.
+7. WHEN kiểm tra full-data THEN có 284 promotion identifiers, trong đó 185 mã có active period `>= 2` ngày; promotion do Amazon phát hành SHALL vẫn được giữ.
 
 ### R-SP-21-02 — State average làm ngưỡng amount
 
@@ -184,6 +206,7 @@ Revision note 2026-08-12: README must target WSL, use `<user_name>`/`$HOME` plac
 2. WHEN tính average THEN hệ thống SHALL tính average purchased amount riêng cho từng state.
 3. WHEN một cancelled order được so sánh THEN hệ thống SHALL dùng average của chính associated state.
 4. IF state không có average hợp lệ hoặc order amount null/không hợp lệ THEN chính sách loại/giữ SHALL được chốt rõ và kiểm thử, không được mặc định amount bằng 0 nếu không có căn cứ.
+5. WHEN kiểm tra full-data THEN state average SHALL được tính trên các đơn `Fulfilment=Merchant` và `Courier Status=Shipped`, tạo 40 state thresholds.
 
 ### R-SP-21-03 — Tỷ lệ theo city
 
@@ -196,6 +219,8 @@ Revision note 2026-08-12: README must target WSL, use `<user_name>`/`$HOME` plac
 3. WHEN city/state khác nhau về hoa/thường hoặc khoảng trắng THEN chính sách chuẩn hóa SHALL tránh chia tách nhóm giả và không làm mất giá trị gốc cần báo cáo.
 4. WHEN denominator bằng 0 THEN hệ thống SHALL không chia cho 0 và SHALL áp dụng chính sách output đã chốt.
 5. WHEN kiểm thử fixture THEN tỷ lệ SHALL được đối chiếu bằng phép tính tay cho city có order đạt/không đạt và state có/không có average.
+6. WHEN tính mẫu số THEN phải giữ cả order không có promotion bằng `LEFT JOIN`; slide nêu 6.909 đơn/1.435 city, còn CSV hiện tại sau parser chuẩn cho 6.906 đơn/1.442 `(state,city)` groups.
+7. WHEN kiểm tra full-data THEN percentage SHALL bằng 0% ở mọi city; Report SHALL nêu rõ chênh lệch baseline, đồng thời chứng minh 18.332 Cancelled orders chỉ có 295 order có promotion và mỗi order chỉ có 1 mã.
 
 ### R-SP-21-04 — Ràng buộc API, execution plan và output
 
@@ -211,6 +236,7 @@ Revision note 2026-08-12: README must target WSL, use `<user_name>`/`$HOME` plac
 6. WHEN Task 2-1 hoàn tất THEN kết quả SHALL là đúng một tệp vật lý `Task_2-1.parquet` trên filesystem thông thường, đọc được bằng Pandas hoặc Spark local mode.
 7. WHEN chọn schema output THEN schema SHALL đủ để xác định city, numerator, denominator và percentage hoặc các trường tương đương để kiểm chứng.
 8. WHEN viết Report THEN phần Task 2-1 SHALL giải thích cách hiểu, decomposition, chiến lược implementation và lý do từng bước.
+9. WHEN phân tích plan mặc định THEN Report SHALL đối chiếu 4 `Exchange`, 3 `BroadcastHashJoin`, 0 `Sort`; khi tắt broadcast bằng `autoBroadcastJoinThreshold=-1`, đối chiếu 7 `Exchange`, 3 `SortMergeJoin`, 6 `Sort`.
 
 ## 7. Task 2-2 — Spark Structured APIs: dynamic percentiles
 
@@ -224,6 +250,7 @@ Revision note 2026-08-12: README must target WSL, use `<user_name>`/`$HOME` plac
 2. IF order không có promotion THEN promotion count SHALL bằng 0.
 3. WHEN nhóm THEN percentile threshold SHALL được tính độc lập cho từng `(SKU, calendar month)`.
 4. WHEN một Order ID xuất hiện trên nhiều record THEN grain của “order” và cách tránh double count SHALL được chốt trong Design, ghi trong Report và kiểm thử.
+5. WHEN kiểm tra full-data THEN có 16.486 nhóm `(SKU, month)`; promotion count SHALL nằm trong khoảng 0–26 và ô rỗng SHALL có count bằng 0.
 
 ### R-SP-22-02 — P90/P80 và population standard deviation
 
@@ -237,6 +264,7 @@ Revision note 2026-08-12: README must target WSL, use `<user_name>`/`$HOME` plac
 4. IF một `(SKU, month, percentile level)` có ít hơn 2 qualifying orders THEN standard deviation SHALL bằng 0.
 5. WHEN xuất kết quả THEN P90 và P80 SHALL đều có threshold, số qualifying orders và standard deviation hoặc schema tương đương đủ để kiểm chứng.
 6. WHEN amount null/không hợp lệ THEN chính sách xử lý SHALL thống nhất giữa approximate/exact và được nêu trong Report.
+7. IF nhóm sau lọc còn 0 hoặc 1 giá trị `Amount` hợp lệ THEN standard deviation SHALL được xuất là `0.0` bằng `coalesce`; không biến `Amount=NULL` thành 0 trước khi tính trung bình.
 
 ### R-SP-22-03 — Hai cách tính percentile
 
@@ -248,6 +276,7 @@ Revision note 2026-08-12: README must target WSL, use `<user_name>`/`$HOME` plac
 2. WHEN tính exact percentile THEN lời giải SHALL tự triển khai bằng DataFrame/Dataset operations, SHALL NOT dùng direct Spark SQL string query và SHALL NOT giả mạo exact bằng hàm approximate với accuracy cao.
 3. WHEN định nghĩa exact percentile THEN quy ước rank/interpolation SHALL được ghi rõ, áp dụng nhất quán cho P90/P80 và xác nhận trước triển khai.
 4. WHEN hai cách chạy trên cùng input THEN chúng SHALL dùng cùng cách parse, grain order, group key, null policy và filter `>= threshold`.
+5. WHEN chọn exact percentile THEN spec SHALL dùng nearest-rank `ceil(p*N)` để lấy một promotion count quan sát được; linear interpolation SHALL chỉ là phương án đối chiếu, không phải kết quả chính.
 
 ### R-SP-22-04 — So sánh accuracy, runtime và qualifying sets
 
@@ -260,6 +289,7 @@ Revision note 2026-08-12: README must target WSL, use `<user_name>`/`$HOME` plac
 3. WHEN hai approach tạo qualifying-order sets khác nhau trong bất kỳ group nào THEN Report SHALL nhận diện và phân tích các group đó.
 4. WHEN hai sets không khác nhau THEN Report SHALL nêu rõ đã kiểm tra và không tìm thấy khác biệt.
 5. WHEN benchmark THEN cache, warm-up, input, Spark configuration và điểm bắt đầu/kết thúc timing SHALL được giữ tương đương hoặc ghi rõ để kết quả có thể diễn giải.
+6. WHEN đối chiếu full-data THEN P90 có thể lệch threshold ở 43,5% nhóm nhưng chỉ 0,8% lệch SD cuối; P80 lần lượt là 36,7% và 2,4%; Report SHALL phân biệt chênh lệch trung gian với chênh lệch đáp số.
 
 ### R-SP-22-05 — Phân tích partition cho group lớn
 
@@ -272,6 +302,7 @@ Revision note 2026-08-12: README must target WSL, use `<user_name>`/`$HOME` plac
 3. IF có group hơn 1,000 orders THEN Report SHALL giải thích partition strategy được chọn.
 4. IF có group hơn 1,000 orders THEN Report SHALL liên hệ default partition size điển hình 128 MB với data volume thực của group.
 5. IF không có group hơn 1,000 orders THEN Report SHALL nêu kết quả kiểm tra; không bắt buộc tạo một thảo luận giả định như thể điều kiện đã xảy ra.
+6. WHEN kiểm tra full-data THEN group lớn nhất có 426 order và khoảng 222 KB; không có group vượt 1.000 order, nên không repartition thủ công cho từng group. Report SHALL ghi vấn đề thực tế là 200 shuffle partitions cho khoảng 69 MB và có thể cân nhắc 8–16 hoặc AQE coalesce.
 
 ### R-SP-22-06 — Output và báo cáo Task 2-2
 
@@ -325,27 +356,30 @@ Note: if the folder layout changes, any scripts, source path literals, build set
 - README là optional theo PDF nhưng trở thành bắt buộc trong spec do yêu cầu trực tiếp của người dùng.
 - Nhóm tự chọn schema output phù hợp; spec chỉ yêu cầu schema đủ rõ để kiểm chứng và được khóa ở Design.
 
-## 10. Giả định tạm thời cần xác nhận
+## 10. Quyết định đã chốt cho các điểm mập mờ
 
-Các giả định này giữ requirement testable nhưng chưa được coi là quyết định thiết kế cuối:
+Các quyết định dưới đây được cập nhật từ `Lab3_Slide_ref.pdf` ngày 2026-08-31. Đây là semantics phải dùng khi triển khai; mọi quyết định không phải câu chữ tuyệt đối của đề đều phải được nhắc lại trong Report.
 
-1. “Frequency” ở Task 1-1 là số bought order records cho size trong cửa sổ, không phải tổng `Qty`; cần xác nhận grain khi `Order ID` lặp.
-2. “Purchased amount” dùng cột `Amount`.
-3. Median cho số style chẵn là trung bình số học của hai giá trị giữa.
-4. Định dạng `Date` chính của dataset là `MM-dd-yy`; parser vẫn phải fail rõ hoặc xử lý có kiểm soát khi gặp giá trị sai.
-5. So sánh label cố định (`Cancelled`, `Standard`, `Merchant`, `Shipped`) nên trim và không phân biệt hoa/thường, nhưng không dùng contains trừ điều kiện “Status has shipped” của Task 1-1.
-6. Population variance và population standard deviation bỏ qua amount null sau khi record được xử lý theo null policy; không tự động biến null thành 0.
+1. **Task 1-1 bought predicate**: dùng `Status` chứa `shipped` và `Qty > 0`; không dùng `Status = 'Shipped'`, không dùng `Qty != 0`.
+2. **Task 1-1 frequency/grain**: một CSV row là một record được đếm; không cộng `Qty` để tạo frequency. `Order ID` lặp không được tự động deduplicate vì mỗi row có thuộc tính SKU/size riêng.
+3. **Task 1-1 variance measure**: chọn `Amount`, vì slide khuyến nghị cách này do khớp tên “purchased amount”. `Amount=NULL` vẫn thuộc frequency của bought row nhưng bị loại khỏi moment; nếu không còn Amount hợp lệ thì variance được xem là vô hạn khi phá hòa để ưu tiên nhóm có variance hữu hạn. Quy tắc này phải được ghi trong Report.
+4. **Task 1-1 output date**: chọn map-to-buckets `t+1..t+L`, kể cả sau ngày lớn nhất của input; do đó ngày cuối là `29/06 + 10 = 09/07/2022`. Khoảng `[d-L,d-1]` vẫn không bao gồm ngày `d`.
+5. **Task 1-2 population**: chọn chỉ dùng bought rows với cùng predicate `Status contains shipped AND Qty > 0` để “purchased” có nghĩa nhất quán.
+6. **Task 1-2 scope của “đã từng bán XXL”**: chọn cách toàn cục — style đạt điều kiện nếu từng bán size `>= XXL` ở bất kỳ state/tháng nào — vì file đáp án của giảng viên dùng cách này. Report vẫn phải nêu cách hiểu trong từng `(state, month)` và chênh lệch 40/128 nhóm (31%) để minh bạch.
+7. **Task 1-2 median**: số phần tử chẵn lấy trung bình số học của hai giá trị giữa; nhóm không có style qualifying không phát output.
+8. **Task 2-1 cancelled**: dùng cách hiểu chính của slide: `Status` chứa `Cancelled` và `ship-service-level = Standard`; các biến thể `Courier = Cancelled` chỉ là kiểm chứng phụ. Tất cả bốn cách hiểu trên slide đều cho 0 đơn đạt `>=3` promotion.
+9. **Task 2-1 denominator**: chọn `Cancelled + Standard` orders trong từng `(state, city)` làm mẫu số; numerator là subset đạt thêm `>=3` promotion hợp lệ và `Amount < state average`. Dùng `LEFT JOIN` để order không có promotion vẫn ở mẫu số.
+10. **Task 2-2 percentile**: chọn exact nearest-rank `ceil(p*N)`; approximate dùng Spark built-in. Linear interpolation chỉ dùng để giải thích/đối chiếu, không dùng làm kết quả chính.
+11. **Task 2-2 standard deviation/null**: dùng population SD (`ddof=0`, `stddev_pop`). Nhóm có dưới 2 Amount hợp lệ hoặc không có Amount hợp lệ xuất `0.0`; không thay null bằng 0 trước khi tính.
+12. **Task 2-2 repartition**: không repartition thủ công theo group ở dữ liệu hiện tại vì group lớn nhất chỉ 426 rows/222 KB và không có group >1.000. Chỉ ghi nhận việc giảm `spark.sql.shuffle.partitions` từ 200 xuống khoảng 8–16 hoặc dùng AQE coalesce là hướng tối ưu cần benchmark.
+13. **`shapes.parquet(legacy)`**: không thuộc input/logic của PDF; loại khỏi pipeline và submission.
 
-## 11. Câu hỏi mở phải giải quyết trước hoặc trong phase Design
+## 11. Thông tin còn cần cung cấp trước khi chạy môi trường thật
 
-1. **Spark compatibility**: Máy hiện có Spark phiên bản nào, chạy standalone/local hay trên YARN, và binary có được build cho Scala 2.11 không? Đây là dữ kiện cần để chọn build dependencies và lệnh chạy chính xác.
-2. **RepresentativeID và deadline**: Cần ID đại diện để sinh package cuối và deadline để hoàn thiện planning.
-3. **Grain của order**: Nếu một `Order ID` có nhiều dòng, các cụm “number of orders”, “amount of orders” và promotion count phải tính distinct order hay từng record/item line?
-4. **Task 1-1 output date range**: Map-to-buckets có phát window dates sau ngày lớn nhất của dataset hay chỉ các ngày nằm trong miền quan sát; “unseen timestamps may arise” xác nhận các ngày trống bên trong, nhưng biên cuối cần chốt.
-5. **Task 1-2 population**: “goods purchased” có yêu cầu áp dụng bộ lọc bought giống Task 1-1 hay Task 1-2 dùng toàn bộ records? Đề không phát biểu bộ lọc rõ ràng ở bài này.
-6. **Task 2-1 denominator**: “percentage of cancelled orders of Standard service level that…” được hiểu là số cancelled Standard orders thỏa thêm ba điều kiện chia tổng cancelled Standard orders trong city; cần xác nhận nếu giảng viên muốn mẫu số khác.
-7. **Exact percentile convention**: Đề chưa nêu nearest-rank, lower/higher hay linear interpolation. Cần chọn và ghi rõ một quy ước có thể biện minh.
-8. **Vai trò `shapes.parquet(legacy)`**: PDF không nhắc tệp này trong input; cần xác định đây là mẫu kiểm tra định dạng output hay artefact không thuộc bài.
+Đây là các dữ kiện vận hành, không phải mơ hồ nghiệp vụ. Nếu chưa có, không được giả tạo giá trị:
+
+1. Phiên bản Spark thực tế và mode chạy (`local`, standalone hoặc YARN); phải chạy `spark-submit --version` trước khi khóa dependency.
+2. `RepresentativeID`, Drive URL và deadline Moodle trước khi đóng gói cuối.
 
 ## 12. Deferred / ngoài phạm vi
 
@@ -379,8 +413,8 @@ Các giả định này giữ requirement testable nhưng chưa được coi là
 - [x] Business rules, giới hạn API/ngôn ngữ/môi trường và output đã được ghi nhận.
 - [x] Data/persistence scope, lifecycle, volume và output filenames đã được ghi nhận.
 - [x] Report, benchmark, submission structure và grading evidence đã được truy vết.
-- [x] Các điểm đề mơ hồ được đưa vào câu hỏi mở thay vì tự quyết định âm thầm.
-- [x] Approval Gate hiện diện và được đổi sang `Approved` sau xác nhận rõ của người dùng.
+- [x] Các điểm đề mơ hồ được đưa vào Decision Records, có lựa chọn, lý do và cách triển khai; không tự quyết định âm thầm.
+- [x] Revision 2026-08-31 đã được người dùng xác nhận qua Approval Gate.
 
 ### Clarity và consistency
 
@@ -405,3 +439,5 @@ Các giả định này giữ requirement testable nhưng chưa được coi là
 - **Confirmation date**: 2026-08-10
 - **Revision note (2026-08-12)**: Scope changed to require WSL-friendly README commands, flattened task source roots, and no top-level `scripts/` directory.
 - **Notes / required revisions before design**: Người dùng trả lời “approved”. Những điểm chưa có dữ kiện từ giảng viên được Design giải quyết bằng quyết định và giả định công khai, có thể sửa nếu nhận được clarification sau đó.
+- **Revision gate**: Người dùng cần xác nhận các quyết định tại Sec 10 trước khi revision này được coi là approved cho code execution.
+- **Revision confirmation**: Người dùng xác nhận triển khai revision ngày 2026-08-31.
